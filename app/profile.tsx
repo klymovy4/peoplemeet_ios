@@ -386,14 +386,91 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleSaveDetails = async () => {
-    // Валидация возраста
+  // Функция для проверки валидности формы
+  const isFormValid = () => {
+    // Проверка имени
+    if (!name || name.trim().length === 0) {
+      return false;
+    }
+
+    // Проверка возраста
+    if (!age || age.trim().length === 0) {
+      return false;
+    }
     const ageNum = parseInt(age, 10);
-    if (age && (isNaN(ageNum) || ageNum < 18 || ageNum > 90)) {
+    if (isNaN(ageNum) || ageNum < 18 || ageNum > 90) {
+      return false;
+    }
+
+    // Проверка пола
+    if (!sex || sex.trim().length === 0) {
+      return false;
+    }
+
+    // Проверка описания - минимум 10 символов
+    if (!description || description.trim().length < 10) {
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleSaveDetails = async () => {
+    // Валидация имени - обязательно
+    if (!name || name.trim().length === 0) {
+      Toast.show({
+        type: 'error',
+        text1: 'Ошибка',
+        text2: 'Имя обязательно для заполнения',
+      });
+      return;
+    }
+
+    // Валидация возраста - обязательно, от 18 до 90
+    if (!age || age.trim().length === 0) {
+      Toast.show({
+        type: 'error',
+        text1: 'Ошибка',
+        text2: 'Возраст обязателен для заполнения',
+      });
+      return;
+    }
+
+    const ageNum = parseInt(age, 10);
+    if (isNaN(ageNum) || ageNum < 18 || ageNum > 90) {
       Toast.show({
         type: 'error',
         text1: 'Ошибка',
         text2: 'Возраст должен быть от 18 до 90 лет',
+      });
+      return;
+    }
+
+    // Валидация пола - обязательно
+    if (!sex || sex.trim().length === 0) {
+      Toast.show({
+        type: 'error',
+        text1: 'Ошибка',
+        text2: 'Пол должен быть выбран',
+      });
+      return;
+    }
+
+    // Валидация описания - обязательно, минимум 10 символов
+    if (!description || description.trim().length === 0) {
+      Toast.show({
+        type: 'error',
+        text1: 'Ошибка',
+        text2: 'Описание обязательно для заполнения',
+      });
+      return;
+    }
+
+    if (description.trim().length < 10) {
+      Toast.show({
+        type: 'error',
+        text1: 'Ошибка',
+        text2: 'Описание должно содержать минимум 10 символов',
       });
       return;
     }
@@ -411,11 +488,11 @@ export default function ProfileScreen() {
       }
 
       const data = {
-        name: name,
-        age: age ? parseInt(age, 10) : null,
-        sex: sex || null,
-        description: description || null,
-        thoughts: thoughts || null,
+        name: name.trim(),
+        age: parseInt(age, 10),
+        sex: sex,
+        description: description.trim(),
+        thoughts: thoughts ? thoughts.trim() : '',
         email: userData?.email || '',
         token: token,
       };
@@ -610,12 +687,17 @@ export default function ProfileScreen() {
                     style={[styles.input, styles.textArea]}
                     value={description}
                     onChangeText={setDescription}
-                    placeholder="Введите описание"
+                    placeholder="Введите описание (минимум 10 символов)"
                     placeholderTextColor="#999"
                     multiline
                     numberOfLines={4}
                     textAlignVertical="top"
                   />
+                  {description && description.trim().length > 0 && description.trim().length < 10 && (
+                    <Text style={styles.errorText}>
+                      Описание должно содержать минимум 10 символов ({description.trim().length}/10)
+                    </Text>
+                  )}
                 </View>
 
                 {/* Мысли */}
@@ -624,13 +706,29 @@ export default function ProfileScreen() {
                   <TextInput
                     style={[styles.input, styles.textArea]}
                     value={thoughts}
-                    onChangeText={setThoughts}
-                    placeholder="Введите мысли"
+                    onChangeText={(text) => {
+                      // Ограничиваем до 100 символов
+                      if (text.length <= 100) {
+                        setThoughts(text);
+                      } else {
+                        setThoughts(text.substring(0, 100));
+                      }
+                    }}
+                    placeholder="Введите мысли (максимум 100 символов)"
                     placeholderTextColor="#999"
                     multiline
                     numberOfLines={4}
                     textAlignVertical="top"
+                    maxLength={100}
                   />
+                  {thoughts !== null && thoughts !== undefined && (
+                    <Text style={[
+                      styles.charCountText,
+                      thoughts.length >= 100 && styles.charCountTextWarning
+                    ]}>
+                      {thoughts.length}/100 символов
+                    </Text>
+                  )}
                 </View>
 
 
@@ -660,9 +758,12 @@ export default function ProfileScreen() {
           )}
 
           <Pressable 
-            style={[styles.saveButton, saving && styles.saveButtonDisabled]} 
+            style={[
+              styles.saveButton, 
+              (saving || !isFormValid()) && styles.saveButtonDisabled
+            ]} 
             onPress={handleSaveDetails}
-            disabled={saving}
+            disabled={saving || !isFormValid()}
           >
             {saving ? (
               <ActivityIndicator size="small" color="#fff" />
@@ -870,6 +971,21 @@ const styles = StyleSheet.create({
   },
   switchLoader: {
     marginLeft: 8,
+  },
+  errorText: {
+    color: '#ff4444',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  charCountText: {
+    color: '#666',
+    fontSize: 12,
+    marginTop: 4,
+    textAlign: 'right',
+  },
+  charCountTextWarning: {
+    color: '#ff8800',
+    fontWeight: '600',
   },
 });
 
