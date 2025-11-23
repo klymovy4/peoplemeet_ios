@@ -1,5 +1,6 @@
 import { getToken, removeToken, saveUserData } from '@/services/auth';
-import { getSelf, uploadAvatar, editProfile, getOnline, getUsersOnline } from '@/services/api';
+import { getSelf, uploadAvatar, editProfile, getOnline } from '@/services/api';
+import { startUsersOnlineInterval, stopUsersOnlineInterval, setIsOnlineStatus } from '@/services/usersOnlineInterval';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
@@ -29,17 +30,9 @@ export default function ProfileScreen() {
   const [description, setDescription] = useState('');
   const [thoughts, setThoughts] = useState('');
 
-  const usersOnlineIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     checkAuth();
-    
-    // Очищаем интервал при размонтировании
-    return () => {
-      if (usersOnlineIntervalRef.current) {
-        clearInterval(usersOnlineIntervalRef.current);
-      }
-    };
   }, []);
 
   const checkAuth = async () => {
@@ -66,13 +59,17 @@ export default function ProfileScreen() {
       setSex(userData.sex || '');
       setDescription(userData.description || '');
       setThoughts(userData.thoughts || '');
-      setIsOnline(userData.is_online === 1);
+      const onlineStatus = userData.is_online === 1;
+      setIsOnline(onlineStatus);
+      setIsOnlineStatus(onlineStatus); // Обновляем глобальный статус
       // Сохраняем данные для кэша
       await saveUserData(userData);
       
-      // Если пользователь онлайн, запускаем запрос пользователей
-      if (userData.is_online === 1) {
-        startFetchingUsersOnline();
+      // Если пользователь онлайн, запускаем интервал запросов
+      if (onlineStatus) {
+        startUsersOnlineInterval();
+      } else {
+        stopUsersOnlineInterval();
       }
     } else {
       Toast.show({
@@ -88,7 +85,7 @@ export default function ProfileScreen() {
   const handleLogout = async () => {
     try {
       // Останавливаем интервал запроса пользователей
-      stopFetchingUsersOnline();
+      stopUsersOnlineInterval();
 
       // Если пользователь онлайн, сначала отправляем запрос о переходе в оффлайн
       if (isOnline) {
@@ -252,33 +249,6 @@ export default function ProfileScreen() {
     setSelectedImageUri(null);
   };
 
-  const startFetchingUsersOnline = async () => {
-    // Очищаем предыдущий интервал если есть
-    if (usersOnlineIntervalRef.current) {
-      clearInterval(usersOnlineIntervalRef.current);
-    }
-
-    // Запрашиваем сразу
-    const token = await getToken();
-    if (token) {
-      await getUsersOnline(token);
-    }
-
-    // Устанавливаем интервал на каждые 3 секунды
-    usersOnlineIntervalRef.current = setInterval(async () => {
-      const token = await getToken();
-      if (token) {
-        await getUsersOnline(token);
-      }
-    }, 3000);
-  };
-
-  const stopFetchingUsersOnline = () => {
-    if (usersOnlineIntervalRef.current) {
-      clearInterval(usersOnlineIntervalRef.current);
-      usersOnlineIntervalRef.current = null;
-    }
-  };
 
   const toggleOnlineHandler = async () => {
     if (togglingOnline) return;
@@ -307,7 +277,8 @@ export default function ProfileScreen() {
         const response = await getOnline(data);
         if (response.status === 'success') {
           setIsOnline(false);
-          stopFetchingUsersOnline();
+          setIsOnlineStatus(false); // Обновляем глобальный статус
+          stopUsersOnlineInterval();
           Toast.show({
             type: 'info',
             text1: 'Оффлайн',
@@ -328,6 +299,62 @@ export default function ProfileScreen() {
           });
         }
       } else {
+        // Проверяем наличие всех обязательных данных перед переходом в онлайн
+        if (!userData?.image) {
+          Toast.show({
+            type: 'error',
+            text1: 'Ошибка',
+            text2: 'Необходимо загрузить фото профиля',
+          });
+          return;
+        }
+
+        if (!name || name.trim().length === 0) {
+          Toast.show({
+            type: 'error',
+            text1: 'Ошибка',
+            text2: 'Необходимо указать имя',
+          });
+          return;
+        }
+
+        if (!age || age.trim().length === 0) {
+          Toast.show({
+            type: 'error',
+            text1: 'Ошибка',
+            text2: 'Необходимо указать возраст',
+          });
+          return;
+        }
+
+        const ageNum = parseInt(age, 10);
+        if (isNaN(ageNum) || ageNum < 18 || ageNum > 90) {
+          Toast.show({
+            type: 'error',
+            text1: 'Ошибка',
+            text2: 'Возраст должен быть от 18 до 90 лет',
+          });
+          return;
+        }
+
+        if (!sex || sex.trim().length === 0) {
+          Toast.show({
+            type: 'error',
+            text1: 'Ошибка',
+            text2: 'Необходимо выбрать пол',
+          });
+          return;
+        }
+
+        if (!thoughts || thoughts.trim().length === 0) {
+          Toast.show({
+            type: 'error',
+            text1: 'Ошибка',
+            text2: 'Необходимо указать мысли',
+          });
+          return;
+        }
+
         // Переключаемся на онлайн - запрашиваем геолокацию
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
@@ -353,7 +380,8 @@ export default function ProfileScreen() {
         const response = await getOnline(data);
         if (response.status === 'success') {
           setIsOnline(true);
-          startFetchingUsersOnline();
+          setIsOnlineStatus(true); // Обновляем глобальный статус
+          startUsersOnlineInterval(); // Запускаем интервал
           Toast.show({
             type: 'success',
             text1: 'Онлайн',
@@ -366,6 +394,9 @@ export default function ProfileScreen() {
             setUserData(selfResult.data);
             await saveUserData(selfResult.data);
           }
+
+          // Переходим на страницу карты (интервал будет запущен там)
+          router.replace('/map');
         } else {
           Toast.show({
             type: 'error',
@@ -531,14 +562,6 @@ export default function ProfileScreen() {
     }
   };
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
-
   const getImageUrl = (imageName: string | null | undefined) => {
     if (!imageName) return null;
     // Если изображение уже содержит полный URL, вернем его
@@ -568,6 +591,14 @@ export default function ProfileScreen() {
     if (!sex) return 'Не указано';
     return sex === 'male' ? 'Мужской' : sex === 'female' ? 'Женский' : sex;
   };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -772,6 +803,16 @@ export default function ProfileScreen() {
             )}
           </Pressable>
 
+          {/* Кнопка для перехода на карту, если онлайн */}
+          {isOnline && (
+            <Pressable 
+              style={styles.mapButton} 
+              onPress={() => router.replace('/map')}
+            >
+              <Text style={styles.mapButtonText}>Go to Map</Text>
+            </Pressable>
+          )}
+
           <Pressable style={styles.logoutButton} onPress={handleLogout}>
             <Text style={styles.logoutButtonText}>Logout</Text>
           </Pressable>
@@ -942,6 +983,20 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   saveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  mapButton: {
+    borderRadius: 8,
+    alignItems: 'center',
+    padding: 15,
+    backgroundColor: '#4ECDC4',
+    marginTop: 10,
+    minHeight: 50,
+    justifyContent: 'center',
+  },
+  mapButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
