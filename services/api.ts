@@ -157,3 +157,39 @@ export const getSelf = async (token: string) => {
   }
 };
 
+export const uploadAvatar = async (file: File | { uri: string; type: string; name: string }, token: string) => {
+  const formData = new FormData();
+  
+  // Для React Native используем объект с uri, для web - File
+  if (file instanceof File) {
+    formData.append("photo", file);
+  } else {
+    // Для React Native
+    formData.append("photo", {
+      uri: file.uri,
+      type: file.type || 'image/jpeg',
+      name: file.name || 'avatar.jpg',
+    } as any);
+  }
+  
+  formData.append("token", token);
+
+  try {
+    const response = await fetch(`${baseApi}/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      return { status: 'failed', data: responseData };
+    }
+
+    return { status: 'success', data: responseData };
+  } catch (error) {
+    console.error('Error:', error);
+    return { status: 'failed', error: error };
+  }
+};
+

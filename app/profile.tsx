@@ -1,14 +1,20 @@
 import { getToken, removeToken, saveUserData } from '@/services/auth';
-import { getSelf } from '@/services/api';
+import { getSelf, uploadAvatar } from '@/services/api';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Toast from 'react-native-toast-message';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import ImageCropModal from '@/components/ImageCropModal';
 
 export default function ProfileScreen() {
   const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [cropMode, setCropMode] = useState(false);
+  const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -53,6 +59,132 @@ export default function ProfileScreen() {
       text2: 'Вы успешно вышли из системы',
     });
     router.replace('/');
+  };
+
+  const openFileDialog = async () => {
+    try {
+      // Запрашиваем разрешение на доступ к медиатеке
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Toast.show({
+          type: 'error',
+          text1: 'Ошибка',
+          text2: 'Необходимо разрешение на доступ к фотографиям',
+        });
+        return;
+      }
+
+      // Открываем выбор фото
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setSelectedImageUri(result.assets[0].uri);
+        setCropMode(true);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Ошибка',
+        text2: 'Не удалось выбрать фото',
+      });
+    }
+  };
+
+  const onSave = async (cropData: { x: number; y: number; width: number; height: number; imageWidth: number; imageHeight: number }) => {
+    if (!selectedImageUri) return;
+
+    try {
+      setUploading(true);
+
+      // Создаем квадратный кроп (используем минимальный размер для квадрата)
+      const size = Math.min(cropData.width, cropData.height);
+      
+      const croppedImage = await ImageManipulator.manipulateAsync(
+        selectedImageUri,
+        [
+          {
+            crop: {
+              originX: Math.round(cropData.x),
+              originY: Math.round(cropData.y),
+              width: Math.round(size),
+              height: Math.round(size),
+            },
+          },
+          {
+            resize: {
+              width: 800,
+              height: 800,
+            },
+          },
+        ],
+        {
+          compress: 0.8,
+          format: ImageManipulator.SaveFormat.JPEG,
+        }
+      );
+
+      // Загружаем фото
+      const token = await getToken();
+      if (!token) {
+        Toast.show({
+          type: 'error',
+          text1: 'Ошибка',
+          text2: 'Требуется авторизация',
+        });
+        return;
+      }
+
+      const file = {
+        uri: croppedImage.uri,
+        type: 'image/jpeg',
+        name: 'avatar.jpg',
+      };
+
+      const response = await uploadAvatar(file, token);
+
+      if (response.status === 'success') {
+        Toast.show({
+          type: 'success',
+          text1: 'Успешно',
+          text2: response?.data?.message || 'Фото загружено',
+        });
+
+        // Обновляем данные пользователя
+        const selfResult = await getSelf(token);
+        if (selfResult.status === 'success') {
+          setUserData(selfResult.data);
+          await saveUserData(selfResult.data);
+        }
+      } else {
+        Toast.show({
+          type: 'error',
+          text1: 'Ошибка',
+          text2: response?.data?.message || 'Не удалось загрузить фото',
+        });
+      }
+
+      setCropMode(false);
+      setSelectedImageUri(null);
+    } catch (error) {
+      console.error('Error saving image:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Ошибка',
+        text2: 'Не удалось обработать фото',
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const onDiscard = () => {
+    setCropMode(false);
+    setSelectedImageUri(null);
   };
 
   if (loading) {
@@ -118,6 +250,21 @@ export default function ProfileScreen() {
                         <Text style={styles.placeholderText}>Нет фото</Text>
                       </View>
                   )}
+                  
+                  {/* Кнопка Upload Photo */}
+                  <Pressable
+                    style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
+                    onPress={cropMode ? undefined : openFileDialog}
+                    disabled={uploading || cropMode}
+                  >
+                    {uploading ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.uploadButtonText}>
+                        {cropMode ? 'Обработка...' : 'Upload Photo'}
+                      </Text>
+                    )}
+                  </Pressable>
                 </View>
 
                 {/* Основная информация */}
@@ -195,6 +342,16 @@ export default function ProfileScreen() {
           </Pressable>
         </View>
       </ScrollView>
+
+      {/* Модальное окно для кропа */}
+      {selectedImageUri && (
+        <ImageCropModal
+          visible={cropMode}
+          imageUri={selectedImageUri}
+          onSave={onSave}
+          onDiscard={onDiscard}
+        />
+      )}
     </View>
   );
 }
@@ -248,6 +405,24 @@ const styles = StyleSheet.create({
   imageContainer: {
     alignItems: 'center',
     marginBottom: 20,
+  },
+  uploadButton: {
+    marginTop: 15,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    backgroundColor: '#4ECDC4',
+    minWidth: 150,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadButtonDisabled: {
+    opacity: 0.6,
+  },
+  uploadButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   profileImage: {
     width: 120,
