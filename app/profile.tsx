@@ -36,7 +36,7 @@ export default function ProfileScreen() {
   // Анимированный стиль для плашки сообщений (должен быть на верхнем уровне)
   const messagesSheetStyle = useAnimatedStyle(() => {
     return {
-      transform: [{ translateY: slideAnim.value * 400 }],
+      transform: [{ translateY: slideAnim.value * 500 }], // Увеличено для более высокого открытия
     };
   });
 
@@ -1198,8 +1198,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '80%',
-    minHeight: 300,
+    maxHeight: '90%',
+    minHeight: 400,
   },
   messagesHeader: {
     flexDirection: 'row',
