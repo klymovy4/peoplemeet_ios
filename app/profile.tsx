@@ -4,7 +4,8 @@ import { startUsersOnlineInterval, stopUsersOnlineInterval, setIsOnlineStatus } 
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, TextInput, Platform, Switch } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, TextInput, Platform, Switch, Modal, TouchableWithoutFeedback } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring } from 'react-native-reanimated';
 import Toast from 'react-native-toast-message';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -29,6 +30,15 @@ export default function ProfileScreen() {
   const [sex, setSex] = useState('');
   const [description, setDescription] = useState('');
   const [thoughts, setThoughts] = useState('');
+  const [messagesVisible, setMessagesVisible] = useState(false);
+  const slideAnim = useSharedValue(1); // Начальное значение 1 = плашка скрыта внизу
+  
+  // Анимированный стиль для плашки сообщений (должен быть на верхнем уровне)
+  const messagesSheetStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateY: slideAnim.value * 400 }],
+    };
+  });
 
 
   useEffect(() => {
@@ -628,8 +638,9 @@ export default function ProfileScreen() {
         <Pressable
           style={styles.messageButton}
           onPress={() => {
-            // TODO: Navigate to messages
-            console.log('Messages pressed');
+            setMessagesVisible(true);
+            // Устанавливаем значение в 0, чтобы плашка появилась (translateY = 0)
+            slideAnim.value = withSpring(0);
           }}
         >
           <View style={[styles.messageIcon, styles.messageIconPlaceholder]}>
@@ -864,6 +875,45 @@ export default function ProfileScreen() {
           onDiscard={onDiscard}
         />
       )}
+
+      {/* Плашка сообщений снизу */}
+      <Modal
+        visible={messagesVisible}
+        transparent={true}
+        animationType="none"
+        onRequestClose={() => {
+          slideAnim.value = withTiming(1, { duration: 300 });
+          setTimeout(() => setMessagesVisible(false), 300);
+        }}
+      >
+        <TouchableWithoutFeedback
+          onPress={() => {
+            slideAnim.value = withTiming(1, { duration: 300 });
+            setTimeout(() => setMessagesVisible(false), 300);
+          }}
+        >
+          <View style={styles.messagesBackdrop}>
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+              <Animated.View style={[styles.messagesSheet, messagesSheetStyle]}>
+                <View style={styles.messagesHeader}>
+                  <Text style={styles.messagesTitle}>Сообщения</Text>
+                  <Pressable
+                    onPress={() => {
+                      slideAnim.value = withTiming(1, { duration: 300 });
+                      setTimeout(() => setMessagesVisible(false), 300);
+                    }}
+                  >
+                    <Text style={styles.messagesCloseButton}>✕</Text>
+                  </Pressable>
+                </View>
+                <ScrollView style={styles.messagesContent}>
+                  <Text style={styles.messagesEmptyText}>Здесь будут ваши сообщения</Text>
+                </ScrollView>
+              </Animated.View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </View>
   );
 }
@@ -1138,6 +1188,46 @@ const styles = StyleSheet.create({
   charCountTextWarning: {
     color: '#ff8800',
     fontWeight: '600',
+  },
+  messagesBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  messagesSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+    minHeight: 300,
+  },
+  messagesHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  messagesTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  messagesCloseButton: {
+    fontSize: 24,
+    color: '#666',
+    fontWeight: 'bold',
+  },
+  messagesContent: {
+    flex: 1,
+    padding: 20,
+  },
+  messagesEmptyText: {
+    textAlign: 'center',
+    color: '#999',
+    fontSize: 16,
+    marginTop: 50,
   },
 });
 
