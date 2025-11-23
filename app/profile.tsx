@@ -533,6 +533,26 @@ export default function ProfileScreen() {
                     )}
                   </Pressable>
                 </View>
+                {/* Статус онлайн */}
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Статус:</Text>
+                  <View style={styles.switchContainer}>
+                    <Text style={styles.switchLabel}>
+                      {isOnline ? 'Онлайн' : 'Оффлайн'}
+                    </Text>
+                    <Switch
+                        value={isOnline}
+                        onValueChange={toggleOnlineHandler}
+                        disabled={togglingOnline}
+                        trackColor={{ false: '#e0e0e0', true: '#4ECDC4' }}
+                        thumbColor={isOnline ? '#fff' : '#f4f3f4'}
+                    />
+                    {togglingOnline && (
+                        <ActivityIndicator size="small" style={styles.switchLoader} />
+                    )}
+                  </View>
+                </View>
+
 
                 {/* Основная информация */}
                 <View style={styles.infoRow}>
@@ -613,31 +633,7 @@ export default function ProfileScreen() {
                   />
                 </View>
 
-                {/* Статус онлайн */}
-                <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Статус:</Text>
-                  <View style={styles.switchContainer}>
-                    <Text style={styles.switchLabel}>
-                      {isOnline ? 'Онлайн' : 'Оффлайн'}
-                    </Text>
-                    <Switch
-                      value={isOnline}
-                      onValueChange={toggleOnlineHandler}
-                      disabled={togglingOnline}
-                      trackColor={{ false: '#e0e0e0', true: '#4ECDC4' }}
-                      thumbColor={isOnline ? '#fff' : '#f4f3f4'}
-                    />
-                    {togglingOnline && (
-                      <ActivityIndicator size="small" style={styles.switchLoader} />
-                    )}
-                  </View>
-                </View>
 
-                {/* Последний раз онлайн */}
-                <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Последний раз онлайн:</Text>
-                  <Text style={styles.infoValue}>{formatDate(userData.last_time_online)}</Text>
-                </View>
 
                 {/* Координаты (показываем только если оба значения есть) */}
                 {userData.lat !== null && userData.lat !== undefined &&
@@ -648,6 +644,11 @@ export default function ProfileScreen() {
                         </View>
                     )}
 
+                {/* Последний раз онлайн */}
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Последний раз онлайн:</Text>
+                  <Text style={styles.infoValue}>{formatDate(userData.last_time_online)}</Text>
+                </View>
                 {/* ID */}
                 {userData.id !== null && userData.id !== undefined && (
                     <View style={styles.infoRow}>
