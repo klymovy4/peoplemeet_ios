@@ -1,13 +1,15 @@
 import { getToken, removeToken, saveUserData } from '@/services/auth';
-import { getSelf, uploadAvatar } from '@/services/api';
+import { getSelf, uploadAvatar, editProfile } from '@/services/api';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, TextInput, Platform } from 'react-native';
 import Toast from 'react-native-toast-message';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import ImageCropModal from '@/components/ImageCropModal';
+// @ts-ignore - Picker может не иметь типов
+import { Picker } from '@react-native-picker/picker';
 
 export default function ProfileScreen() {
   const [userData, setUserData] = useState<any>(null);
@@ -15,6 +17,14 @@ export default function ProfileScreen() {
   const [cropMode, setCropMode] = useState(false);
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  
+  // Состояния для редактируемых полей
+  const [name, setName] = useState('');
+  const [age, setAge] = useState('');
+  const [sex, setSex] = useState('');
+  const [description, setDescription] = useState('');
+  const [thoughts, setThoughts] = useState('');
 
   useEffect(() => {
     checkAuth();
@@ -38,6 +48,12 @@ export default function ProfileScreen() {
     if (result.status === 'success') {
       const userData = result.data;
       setUserData(userData);
+      // Инициализируем поля редактирования
+      setName(userData.name || '');
+      setAge(userData.age?.toString() || '');
+      setSex(userData.sex || '');
+      setDescription(userData.description || '');
+      setThoughts(userData.thoughts || '');
       // Сохраняем данные для кэша
       await saveUserData(userData);
     } else {
@@ -187,6 +203,74 @@ export default function ProfileScreen() {
     setSelectedImageUri(null);
   };
 
+  const handleSaveDetails = async () => {
+    // Валидация возраста
+    const ageNum = parseInt(age, 10);
+    if (age && (isNaN(ageNum) || ageNum < 18 || ageNum > 90)) {
+      Toast.show({
+        type: 'error',
+        text1: 'Ошибка',
+        text2: 'Возраст должен быть от 18 до 90 лет',
+      });
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const token = await getToken();
+      if (!token) {
+        Toast.show({
+          type: 'error',
+          text1: 'Ошибка',
+          text2: 'Требуется авторизация',
+        });
+        return;
+      }
+
+      const data = {
+        name: name,
+        age: age ? parseInt(age, 10) : null,
+        sex: sex || null,
+        description: description || null,
+        thoughts: thoughts || null,
+        email: userData?.email || '',
+        token: token,
+      };
+
+      const response = await editProfile(data);
+
+      if (response.status === 'success') {
+        Toast.show({
+          type: 'success',
+          text1: 'Успешно',
+          text2: response?.data?.message || 'Профиль обновлен',
+        });
+
+        // Обновляем данные пользователя
+        const selfResult = await getSelf(token);
+        if (selfResult.status === 'success') {
+          setUserData(selfResult.data);
+          await saveUserData(selfResult.data);
+        }
+      } else {
+        Toast.show({
+          type: 'error',
+          text1: 'Ошибка',
+          text2: response?.data?.message || 'Не удалось обновить профиль',
+        });
+      }
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Ошибка',
+        text2: 'Не удалось сохранить изменения',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -270,7 +354,13 @@ export default function ProfileScreen() {
                 {/* Основная информация */}
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Имя:</Text>
-                  <Text style={styles.infoValue}>{userData.name || 'Не указано'}</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="Введите имя"
+                    placeholderTextColor="#999"
+                  />
                 </View>
 
                 <View style={styles.infoRow}>
@@ -278,32 +368,66 @@ export default function ProfileScreen() {
                   <Text style={styles.infoValue}>{userData.email || 'Не указано'}</Text>
                 </View>
 
-                {userData.age !== null && userData.age !== undefined && (
-                    <View style={styles.infoRow}>
-                      <Text style={styles.infoLabel}>Возраст:</Text>
-                      <Text style={styles.infoValue}>{userData.age} лет</Text>
-                    </View>
-                )}
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Возраст (18-90):</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={age}
+                    onChangeText={(text) => {
+                      // Разрешаем только цифры
+                      const numericValue = text.replace(/[^0-9]/g, '');
+                      setAge(numericValue);
+                    }}
+                    placeholder="Введите возраст"
+                    placeholderTextColor="#999"
+                    keyboardType="numeric"
+                    maxLength={2}
+                  />
+                </View>
 
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Пол:</Text>
-                  <Text style={styles.infoValue}>{formatSex(userData.sex)}</Text>
+                  <View style={styles.pickerContainer}>
+                    <Picker
+                      selectedValue={sex}
+                      onValueChange={(itemValue: string) => setSex(itemValue)}
+                      style={styles.picker}
+                    >
+                      <Picker.Item label="Выберите пол" value="" />
+                      <Picker.Item label="Мужской" value="male" />
+                      <Picker.Item label="Женский" value="female" />
+                    </Picker>
+                  </View>
                 </View>
 
                 {/* Описание */}
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Описание:</Text>
-                  <Text style={styles.infoValue}>
-                    {userData.description 
-                      ? userData.description.replace(/\\n/g, '\n') 
-                      : 'Не указано'}
-                  </Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    value={description}
+                    onChangeText={setDescription}
+                    placeholder="Введите описание"
+                    placeholderTextColor="#999"
+                    multiline
+                    numberOfLines={4}
+                    textAlignVertical="top"
+                  />
                 </View>
 
                 {/* Мысли */}
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Мысли:</Text>
-                  <Text style={styles.infoValue}>{userData.thoughts || 'Не указано'}</Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    value={thoughts}
+                    onChangeText={setThoughts}
+                    placeholder="Введите мысли"
+                    placeholderTextColor="#999"
+                    multiline
+                    numberOfLines={4}
+                    textAlignVertical="top"
+                  />
                 </View>
 
                 {/* Статус онлайн */}
@@ -336,6 +460,18 @@ export default function ProfileScreen() {
                 )}
               </View>
           )}
+
+          <Pressable 
+            style={[styles.saveButton, saving && styles.saveButtonDisabled]} 
+            onPress={handleSaveDetails}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.saveButtonText}>Save Details</Text>
+            )}
+          </Pressable>
 
           <Pressable style={styles.logoutButton} onPress={handleLogout}>
             <Text style={styles.logoutButtonText}>Logout</Text>
@@ -394,20 +530,23 @@ const styles = StyleSheet.create({
   },
   header: {
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
     fontSize: 22,
     fontWeight: '600',
     color: '#333',
   },
   userInfo: {
-    marginBottom: 20,
+    // marginBottom: 16,
+    // backgroundColor: 'yellow',
+
   },
   imageContainer: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
+
   },
   uploadButton: {
-    marginTop: 15,
+    marginTop: 16,
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
@@ -418,6 +557,7 @@ const styles = StyleSheet.create({
   },
   uploadButtonDisabled: {
     opacity: 0.6,
+
   },
   uploadButtonText: {
     color: '#fff',
@@ -425,8 +565,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   profileImage: {
-    width: 120,
-    height: 120,
+    width: 220,
+    height: 220,
     borderRadius: 60,
     borderWidth: 3,
     borderColor: '#4ECDC4',
@@ -463,6 +603,49 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
     lineHeight: 22,
+  },
+  input: {
+    fontSize: 16,
+    color: '#333',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: '#f9f9f9',
+    marginTop: 4,
+  },
+  textArea: {
+    minHeight: 100,
+    maxHeight: 150,
+  },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    backgroundColor: '#f9f9f9',
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  picker: {
+    height: Platform.OS === 'ios' ? 150 : 50,
+    width: '100%',
+  },
+  saveButton: {
+    borderRadius: 8,
+    alignItems: 'center',
+    padding: 15,
+    backgroundColor: '#4ECDC4',
+    marginTop: 20,
+    minHeight: 50,
+    justifyContent: 'center',
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   logoutButton: {
     borderRadius: 8,
