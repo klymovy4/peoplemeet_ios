@@ -1,12 +1,13 @@
 import { getToken, removeToken, saveUserData } from '@/services/auth';
-import { getSelf, uploadAvatar, editProfile } from '@/services/api';
+import { getSelf, uploadAvatar, editProfile, getOnline, getUsersOnline } from '@/services/api';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, TextInput, Platform } from 'react-native';
+import { useEffect, useState, useRef } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, TextInput, Platform, Switch } from 'react-native';
 import Toast from 'react-native-toast-message';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import * as Location from 'expo-location';
 import ImageCropModal from '@/components/ImageCropModal';
 // @ts-ignore - Picker может не иметь типов
 import { Picker } from '@react-native-picker/picker';
@@ -18,6 +19,8 @@ export default function ProfileScreen() {
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isOnline, setIsOnline] = useState(false);
+  const [togglingOnline, setTogglingOnline] = useState(false);
   
   // Состояния для редактируемых полей
   const [name, setName] = useState('');
@@ -26,8 +29,17 @@ export default function ProfileScreen() {
   const [description, setDescription] = useState('');
   const [thoughts, setThoughts] = useState('');
 
+  const usersOnlineIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => {
     checkAuth();
+    
+    // Очищаем интервал при размонтировании
+    return () => {
+      if (usersOnlineIntervalRef.current) {
+        clearInterval(usersOnlineIntervalRef.current);
+      }
+    };
   }, []);
 
   const checkAuth = async () => {
@@ -54,8 +66,14 @@ export default function ProfileScreen() {
       setSex(userData.sex || '');
       setDescription(userData.description || '');
       setThoughts(userData.thoughts || '');
+      setIsOnline(userData.is_online === 1);
       // Сохраняем данные для кэша
       await saveUserData(userData);
+      
+      // Если пользователь онлайн, запускаем запрос пользователей
+      if (userData.is_online === 1) {
+        startFetchingUsersOnline();
+      }
     } else {
       Toast.show({
         type: 'error',
@@ -68,13 +86,44 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = async () => {
-    await removeToken();
-    Toast.show({
-      type: 'success',
-      text1: 'Выход выполнен',
-      text2: 'Вы успешно вышли из системы',
-    });
-    router.replace('/');
+    try {
+      // Останавливаем интервал запроса пользователей
+      stopFetchingUsersOnline();
+
+      // Если пользователь онлайн, сначала отправляем запрос о переходе в оффлайн
+      if (isOnline) {
+        const token = await getToken();
+        if (token) {
+          const data = {
+            token: token,
+            is_online: 0,
+            lat: null,
+            lng: null,
+          };
+
+          try {
+            await getOnline(data);
+          } catch (error) {
+            console.error('Error setting offline status on logout:', error);
+            // Продолжаем выход даже если не удалось отправить статус оффлайн
+          }
+        }
+      }
+
+      // Теперь выполняем выход
+      await removeToken();
+      Toast.show({
+        type: 'success',
+        text1: 'Выход выполнен',
+        text2: 'Вы успешно вышли из системы',
+      });
+      router.replace('/');
+    } catch (error) {
+      console.error('Error during logout:', error);
+      // В любом случае выполняем выход
+      await removeToken();
+      router.replace('/');
+    }
   };
 
   const openFileDialog = async () => {
@@ -201,6 +250,140 @@ export default function ProfileScreen() {
   const onDiscard = () => {
     setCropMode(false);
     setSelectedImageUri(null);
+  };
+
+  const startFetchingUsersOnline = async () => {
+    // Очищаем предыдущий интервал если есть
+    if (usersOnlineIntervalRef.current) {
+      clearInterval(usersOnlineIntervalRef.current);
+    }
+
+    // Запрашиваем сразу
+    const token = await getToken();
+    if (token) {
+      await getUsersOnline(token);
+    }
+
+    // Устанавливаем интервал на каждые 3 секунды
+    usersOnlineIntervalRef.current = setInterval(async () => {
+      const token = await getToken();
+      if (token) {
+        await getUsersOnline(token);
+      }
+    }, 3000);
+  };
+
+  const stopFetchingUsersOnline = () => {
+    if (usersOnlineIntervalRef.current) {
+      clearInterval(usersOnlineIntervalRef.current);
+      usersOnlineIntervalRef.current = null;
+    }
+  };
+
+  const toggleOnlineHandler = async () => {
+    if (togglingOnline) return;
+
+    try {
+      setTogglingOnline(true);
+      const token = await getToken();
+      if (!token) {
+        Toast.show({
+          type: 'error',
+          text1: 'Ошибка',
+          text2: 'Требуется авторизация',
+        });
+        return;
+      }
+
+      if (isOnline) {
+        // Переключаемся на оффлайн
+        const data = {
+          token: token,
+          is_online: 0,
+          lat: null,
+          lng: null,
+        };
+
+        const response = await getOnline(data);
+        if (response.status === 'success') {
+          setIsOnline(false);
+          stopFetchingUsersOnline();
+          Toast.show({
+            type: 'info',
+            text1: 'Оффлайн',
+            text2: 'Вы теперь оффлайн',
+          });
+
+          // Обновляем данные пользователя
+          const selfResult = await getSelf(token);
+          if (selfResult.status === 'success') {
+            setUserData(selfResult.data);
+            await saveUserData(selfResult.data);
+          }
+        } else {
+          Toast.show({
+            type: 'error',
+            text1: 'Ошибка',
+            text2: response?.data?.message || 'Не удалось переключиться на оффлайн',
+          });
+        }
+      } else {
+        // Переключаемся на онлайн - запрашиваем геолокацию
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          Toast.show({
+            type: 'error',
+            text1: 'Ошибка',
+            text2: 'Необходимо разрешение на доступ к геолокации',
+          });
+          return;
+        }
+
+        const location = await Location.getCurrentPositionAsync({});
+        const latitude = location.coords.latitude;
+        const longitude = location.coords.longitude;
+
+        const data = {
+          token: token,
+          is_online: 1,
+          lat: latitude,
+          lng: longitude,
+        };
+
+        const response = await getOnline(data);
+        if (response.status === 'success') {
+          setIsOnline(true);
+          startFetchingUsersOnline();
+          Toast.show({
+            type: 'success',
+            text1: 'Онлайн',
+            text2: 'Вы теперь онлайн',
+          });
+
+          // Обновляем данные пользователя
+          const selfResult = await getSelf(token);
+          if (selfResult.status === 'success') {
+            setUserData(selfResult.data);
+            await saveUserData(selfResult.data);
+          }
+        } else {
+          Toast.show({
+            type: 'error',
+            text1: 'Ошибка',
+            text2: response?.data?.message || 'Не удалось переключиться на онлайн',
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling online status:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Ошибка',
+        text2: 'Не удалось изменить статус',
+      });
+    } finally {
+      setTogglingOnline(false);
+    }
   };
 
   const handleSaveDetails = async () => {
@@ -433,7 +616,21 @@ export default function ProfileScreen() {
                 {/* Статус онлайн */}
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Статус:</Text>
-                  <Text style={styles.infoValue}>{formatOnlineStatus(userData.is_online)}</Text>
+                  <View style={styles.switchContainer}>
+                    <Text style={styles.switchLabel}>
+                      {isOnline ? 'Онлайн' : 'Оффлайн'}
+                    </Text>
+                    <Switch
+                      value={isOnline}
+                      onValueChange={toggleOnlineHandler}
+                      disabled={togglingOnline}
+                      trackColor={{ false: '#e0e0e0', true: '#4ECDC4' }}
+                      thumbColor={isOnline ? '#fff' : '#f4f3f4'}
+                    />
+                    {togglingOnline && (
+                      <ActivityIndicator size="small" style={styles.switchLoader} />
+                    )}
+                  </View>
                 </View>
 
                 {/* Последний раз онлайн */}
@@ -658,6 +855,20 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  switchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  switchLabel: {
+    fontSize: 16,
+    color: '#333',
+    marginRight: 12,
+    minWidth: 70,
+  },
+  switchLoader: {
+    marginLeft: 8,
   },
 });
 

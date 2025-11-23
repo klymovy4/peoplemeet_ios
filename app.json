@@ -12,7 +12,9 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to upload profile pictures.",
-        "NSPhotoLibraryAddUsageDescription": "This app needs access to save photos to your photo library."
+        "NSPhotoLibraryAddUsageDescription": "This app needs access to save photos to your photo library.",
+        "NSLocationWhenInUseUsageDescription": "This app needs access to your location to show you nearby users when you are online.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs access to your location to show you nearby users when you are online."
       }
     },
     "android": {
@@ -26,7 +28,9 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
       ]
     },
     "web": {
@@ -45,6 +49,12 @@
           "dark": {
             "backgroundColor": "#000000"
           }
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "This app needs access to your location to show you nearby users when you are online."
         }
       ]
     ],

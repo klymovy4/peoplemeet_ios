@@ -216,3 +216,53 @@ export const editProfile = async (data: any) => {
   }
 };
 
+export const getOnline = async (data: any) => {
+  try {
+    const response = await fetch(`${baseApi}/online`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      return { status: 'failed', data: responseData };
+    }
+
+    return { status: 'success', data: responseData };
+  } catch (error) {
+    console.error('Error:', error);
+    return { status: 'failed', error: error };
+  }
+};
+
+export const getUsersOnline = async (token: string) => {
+  const data = {
+    token,
+  };
+
+  try {
+    const response = await fetch(`${baseApi}/online_users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const json = await response.json();
+    console.log('Users online data:', json);
+    return json;
+  } catch (err) {
+    console.error('Error fetching online users:', err);
+    return null;
+  }
+};
+
