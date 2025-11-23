@@ -602,11 +602,47 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Header с иконками карты, заголовка и сообщений */}
+      <View style={styles.header}>
+        <Pressable
+          style={styles.mapIconButton}
+          onPress={() => {
+            if (isOnline) {
+              router.replace('/map');
+            } else {
+              Toast.show({
+                type: 'info',
+                text1: 'Информация',
+                text2: 'Необходимо быть онлайн для просмотра карты',
+              });
+            }
+          }}
+        >
+          <View style={[styles.mapIcon, styles.mapIconPlaceholder]}>
+            <Text style={styles.mapIconText}>🗺️</Text>
+          </View>
+        </Pressable>
+        
+        <Text style={styles.headerTitle}>People Meet</Text>
+        
+        <Pressable
+          style={styles.messageButton}
+          onPress={() => {
+            // TODO: Navigate to messages
+            console.log('Messages pressed');
+          }}
+        >
+          <View style={[styles.messageIcon, styles.messageIconPlaceholder]}>
+            <Text style={styles.messageIconText}>✉️</Text>
+          </View>
+        </Pressable>
+      </View>
+      
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.title}>People Meet</Text>
+        {/*<Text style={styles.title}>People Meet</Text>*/}
 
         <View style={styles.card}>
-          <Text style={styles.header}>Профиль</Text>
+          <Text style={styles.cardHeader}>Профиль</Text>
 
           {userData && (
               <View style={styles.userInfo}>
@@ -674,10 +710,10 @@ export default function ProfileScreen() {
                   />
                 </View>
 
-                <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Email:</Text>
-                  <Text style={styles.infoValue}>{userData.email || 'Не указано'}</Text>
-                </View>
+                {/*<View style={styles.infoRow}>*/}
+                {/*  <Text style={styles.infoLabel}>Email:</Text>*/}
+                {/*  <Text style={styles.infoValue}>{userData.email || 'Не указано'}</Text>*/}
+                {/*</View>*/}
 
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Возраст (18-90):</Text>
@@ -764,27 +800,27 @@ export default function ProfileScreen() {
 
 
 
-                {/* Координаты (показываем только если оба значения есть) */}
-                {userData.lat !== null && userData.lat !== undefined &&
-                    userData.lng !== null && userData.lng !== undefined && (
-                        <View style={styles.infoRow}>
-                          <Text style={styles.infoLabel}>Координаты:</Text>
-                          <Text style={styles.infoValue}>{userData.lat}, {userData.lng}</Text>
-                        </View>
-                    )}
+                {/*/!* Координаты (показываем только если оба значения есть) *!/*/}
+                {/*{userData.lat !== null && userData.lat !== undefined &&*/}
+                {/*    userData.lng !== null && userData.lng !== undefined && (*/}
+                {/*        <View style={styles.infoRow}>*/}
+                {/*          <Text style={styles.infoLabel}>Координаты:</Text>*/}
+                {/*          <Text style={styles.infoValue}>{userData.lat}, {userData.lng}</Text>*/}
+                {/*        </View>*/}
+                {/*    )}*/}
 
-                {/* Последний раз онлайн */}
-                <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Последний раз онлайн:</Text>
-                  <Text style={styles.infoValue}>{formatDate(userData.last_time_online)}</Text>
-                </View>
-                {/* ID */}
-                {userData.id !== null && userData.id !== undefined && (
-                    <View style={styles.infoRow}>
-                      <Text style={styles.infoLabel}>ID:</Text>
-                      <Text style={styles.infoValue}>{userData.id}</Text>
-                    </View>
-                )}
+                {/*/!* Последний раз онлайн *!/*/}
+                {/*<View style={styles.infoRow}>*/}
+                {/*  <Text style={styles.infoLabel}>Последний раз онлайн:</Text>*/}
+                {/*  <Text style={styles.infoValue}>{formatDate(userData.last_time_online)}</Text>*/}
+                {/*</View>*/}
+                {/*/!* ID *!/*/}
+                {/*{userData.id !== null && userData.id !== undefined && (*/}
+                {/*    <View style={styles.infoRow}>*/}
+                {/*      <Text style={styles.infoLabel}>ID:</Text>*/}
+                {/*      <Text style={styles.infoValue}>{userData.id}</Text>*/}
+                {/*    </View>*/}
+                {/*)}*/}
               </View>
           )}
 
@@ -803,15 +839,15 @@ export default function ProfileScreen() {
             )}
           </Pressable>
 
-          {/* Кнопка для перехода на карту, если онлайн */}
-          {isOnline && (
-            <Pressable 
-              style={styles.mapButton} 
-              onPress={() => router.replace('/map')}
-            >
-              <Text style={styles.mapButtonText}>Go to Map</Text>
-            </Pressable>
-          )}
+          {/*/!* Кнопка для перехода на карту, если онлайн *!/*/}
+          {/*{isOnline && (*/}
+          {/*  <Pressable */}
+          {/*    style={styles.mapButton} */}
+          {/*    onPress={() => router.replace('/map')}*/}
+          {/*  >*/}
+          {/*    <Text style={styles.mapButtonText}>Go to M22ap</Text>*/}
+          {/*  </Pressable>*/}
+          {/*)}*/}
 
           <Pressable style={styles.logoutButton} onPress={handleLogout}>
             <Text style={styles.logoutButtonText}>Logout</Text>
@@ -845,8 +881,69 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     alignItems: 'center',
-    padding: 20,
-    paddingTop: 40,
+    padding: 16,
+    // paddingTop: 40,
+  },
+  header: {
+    paddingTop: 50,
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerSpacer: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    flex: 1,
+    textAlign: 'center',
+  },
+  mapIconButton: {
+    width: 50,
+    height: 50,
+  },
+  mapIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: '#4ECDC4',
+    backgroundColor: '#f0f0f0',
+  },
+  mapIconPlaceholder: {
+    backgroundColor: '#e0e0e0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mapIconText: {
+    fontSize: 24,
+  },
+  messageButton: {
+    width: 50,
+    height: 50,
+  },
+  messageIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: '#4ECDC4',
+    backgroundColor: '#f0f0f0',
+  },
+  messageIconPlaceholder: {
+    backgroundColor: '#e0e0e0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  messageIconText: {
+    fontSize: 24,
   },
   title: {
     marginBottom: 20,
@@ -868,7 +965,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  header: {
+  cardHeader: {
     textAlign: 'center',
     marginBottom: 16,
     fontSize: 22,
@@ -907,7 +1004,7 @@ const styles = StyleSheet.create({
   profileImage: {
     width: 220,
     height: 220,
-    borderRadius: 60,
+    borderRadius: 20,
     borderWidth: 3,
     borderColor: '#4ECDC4',
     backgroundColor: '#f0f0f0',
