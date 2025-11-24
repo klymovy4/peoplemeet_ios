@@ -36,7 +36,7 @@ export default function ProfileScreen() {
   // Анимированный стиль для плашки сообщений (должен быть на верхнем уровне)
   const messagesSheetStyle = useAnimatedStyle(() => {
     return {
-      transform: [{ translateY: slideAnim.value * 500 }], // Увеличено для более высокого открытия
+      transform: [{ translateY: slideAnim.value * 600 }], // Увеличено для более высокого открытия
     };
   });
 
@@ -896,7 +896,7 @@ export default function ProfileScreen() {
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
               <Animated.View style={[styles.messagesSheet, messagesSheetStyle]}>
                 <View style={styles.messagesHeader}>
-                  <Text style={styles.messagesTitle}>Сообщения</Text>
+                  <Text style={styles.messagesTitle}>Сообщения2</Text>
                   <Pressable
                     onPress={() => {
                       slideAnim.value = withTiming(1, { duration: 300 });
@@ -1004,7 +1004,7 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 500,
-    padding: 20,
+    padding: 16,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e0e0e0',
@@ -1196,10 +1196,10 @@ const styles = StyleSheet.create({
   },
   messagesSheet: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     maxHeight: '90%',
-    minHeight: 400,
+    minHeight: 600,
   },
   messagesHeader: {
     flexDirection: 'row',
