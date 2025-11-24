@@ -1,6 +1,7 @@
 import { getToken } from '@/services/auth';
 import { getSelf } from '@/services/api';
-import { startUsersOnlineInterval, stopUsersOnlineInterval, setIsOnlineStatus } from '@/services/usersOnlineInterval';
+import { enableUsersOnlinePolling, disableUsersOnlinePolling } from '@/services/usersOnlineInterval';
+import { startMessagesInterval } from '@/services/messagesInterval';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -37,19 +38,22 @@ export default function MapScreen() {
     if (result.status === 'success') {
       setUserData(result.data);
       
-      // Если пользователь не онлайн, перенаправляем на профиль
+      // Запускаем интервал получения сообщений (всегда, если пользователь залогинен)
+      startMessagesInterval();
+      
+      // Если пользователь не онлайн, перенаправляем на профиль и выключаем запросы
       if (result.data.is_online !== 1) {
+        disableUsersOnlinePolling();
         router.replace('/profile');
         return;
       }
       
       // Если пользователь онлайн, запускаем запросы пользователей
       const onlineStatus = result.data.is_online === 1;
-      setIsOnlineStatus(onlineStatus);
       if (onlineStatus) {
-        startUsersOnlineInterval();
+        enableUsersOnlinePolling();
       } else {
-        stopUsersOnlineInterval();
+        disableUsersOnlinePolling();
       }
     } else {
       // Если не удалось получить данные, перенаправляем на профиль

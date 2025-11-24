@@ -1,5 +1,6 @@
 import { loginUser } from '@/services/api';
 import { saveToken, saveUserData } from '@/services/auth';
+import { startMessagesInterval } from '@/services/messagesInterval';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -57,6 +58,9 @@ export default function LoginScreen() {
             text1: 'Успешно',
             text2: 'Вход выполнен',
          });
+
+         // Запускаем интервал получения сообщений
+         startMessagesInterval();
 
          // Переход на защищенную страницу
          router.replace('/profile');
@@ -167,7 +171,8 @@ const styles = StyleSheet.create({
       padding: 16,
       borderRadius: 8,
       borderWidth: 1,
-      borderColor: 'green'
+      borderColor: '#0000002d',
+      boxShadow: 'rgba(17, 12, 46, 0.15) 0px 48px 100px 0px',
    },
    header: {
       // TODO: Add header styling
@@ -217,7 +222,7 @@ const styles = StyleSheet.create({
       flexDirection: 'row',
       justifyContent: 'center',
       alignItems: 'center',
-      marginTop: 8,
+      marginTop: 16,
 
    },
    signUpText: {

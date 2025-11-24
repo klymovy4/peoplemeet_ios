@@ -1,6 +1,7 @@
 import { getToken, removeToken, saveUserData } from '@/services/auth';
 import { getSelf, uploadAvatar, editProfile, getOnline } from '@/services/api';
-import { startUsersOnlineInterval, stopUsersOnlineInterval, setIsOnlineStatus } from '@/services/usersOnlineInterval';
+import { enableUsersOnlinePolling, disableUsersOnlinePolling } from '@/services/usersOnlineInterval';
+import { startMessagesInterval, stopMessagesInterval } from '@/services/messagesInterval';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
@@ -71,16 +72,17 @@ export default function ProfileScreen() {
       setThoughts(userData.thoughts || '');
       const onlineStatus = userData.is_online === 1;
       setIsOnline(onlineStatus);
-      setIsOnlineStatus(onlineStatus); // Обновляем глобальный статус
+      if (onlineStatus) {
+        enableUsersOnlinePolling();
+      } else {
+        disableUsersOnlinePolling();
+      }
       // Сохраняем данные для кэша
       await saveUserData(userData);
       
-      // Если пользователь онлайн, запускаем интервал запросов
-      if (onlineStatus) {
-        startUsersOnlineInterval();
-      } else {
-        stopUsersOnlineInterval();
-      }
+      // Запускаем интервал получения сообщений (всегда, если пользователь залогинен)
+      startMessagesInterval();
+      
     } else {
       Toast.show({
         type: 'error',
@@ -94,8 +96,10 @@ export default function ProfileScreen() {
 
   const handleLogout = async () => {
     try {
-      // Останавливаем интервал запроса пользователей
-      stopUsersOnlineInterval();
+      // Гарантированно выключаем запросы пользователей
+      disableUsersOnlinePolling();
+      // Останавливаем интервал получения сообщений
+      stopMessagesInterval();
 
       // Если пользователь онлайн, сначала отправляем запрос о переходе в оффлайн
       if (isOnline) {
@@ -287,8 +291,7 @@ export default function ProfileScreen() {
         const response = await getOnline(data);
         if (response.status === 'success') {
           setIsOnline(false);
-          setIsOnlineStatus(false); // Обновляем глобальный статус
-          stopUsersOnlineInterval();
+          disableUsersOnlinePolling(); // Останавливаем запросы онлайн-пользователей
           Toast.show({
             type: 'info',
             text1: 'Оффлайн',
@@ -390,8 +393,7 @@ export default function ProfileScreen() {
         const response = await getOnline(data);
         if (response.status === 'success') {
           setIsOnline(true);
-          setIsOnlineStatus(true); // Обновляем глобальный статус
-          startUsersOnlineInterval(); // Запускаем интервал
+          enableUsersOnlinePolling(); // Возобновляем запросы онлайн-пользователей
           Toast.show({
             type: 'success',
             text1: 'Онлайн',

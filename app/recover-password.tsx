@@ -270,9 +270,11 @@ const styles = StyleSheet.create({
     width: '90%',
     padding: 16,
     borderRadius: 8,
-    borderColor: 'green',
     borderWidth: 1,
     borderStyle: 'solid',
+    borderColor: '#0000002d',
+    boxShadow: 'rgba(17, 12, 46, 0.15) 0px 48px 100px 0px',
+
   },
   header: {
     // TODO: Add header styling

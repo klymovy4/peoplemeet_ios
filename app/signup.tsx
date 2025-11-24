@@ -1,5 +1,6 @@
 import { getSelf, signUpUser } from '@/services/api';
 import { saveToken, saveUserData } from '@/services/auth';
+import { startMessagesInterval } from '@/services/messagesInterval';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -68,6 +69,9 @@ export default function SignUpScreen() {
           await saveUserData(selfResult.data);
         }
       }
+
+      // Запускаем интервал получения сообщений
+      startMessagesInterval();
 
       // Переход на страницу профиля
       router.replace('/profile');
@@ -182,7 +186,8 @@ const styles = StyleSheet.create({
     width: '90%',
     padding: 16,
     borderWidth: 1,
-    borderColor: 'green',
+    borderColor: '#0000002d',
+    boxShadow: 'rgba(17, 12, 46, 0.15) 0px 48px 100px 0px',
     borderRadius: 8,
   },
   header: {
