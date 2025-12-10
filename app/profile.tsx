@@ -1,5 +1,5 @@
 import { getToken, removeToken, saveUserData } from '@/services/auth';
-import { getSelf, uploadAvatar, editProfile, getOnline, readMessages } from '@/services/api';
+import { getSelf, uploadAvatar, editProfile, getOnline, readMessages, sendMessage } from '@/services/api';
 import { enableUsersOnlinePolling, disableUsersOnlinePolling } from '@/services/usersOnlineInterval';
 import { startMessagesInterval, stopMessagesInterval, setMessagesCallback } from '@/services/messagesInterval';
 import { Image } from 'expo-image';
@@ -36,7 +36,10 @@ export default function ProfileScreen() {
   const [messagesUsers, setMessagesUsers] = useState<any>({});
   const [messagesData, setMessagesData] = useState<any>({});
   const [selectedChatUser, setSelectedChatUser] = useState<any | null>(null);
+  const [messageText, setMessageText] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
   const slideAnim = useSharedValue(1); // Начальное значение 1 = плашка скрыта внизу
+  const scrollViewRef = useRef<ScrollView>(null);
   
   // Анимированный стиль для плашки сообщений (должен быть на верхнем уровне)
   const messagesSheetStyle = useAnimatedStyle(() => {
@@ -67,10 +70,9 @@ export default function ProfileScreen() {
       let usersWithUnreadCount = 0;
       
       Object.keys(messages).forEach((userId) => {
-        const userMessages = messages[userId] || {};
+        const userMessages = messages[userId] || [];
         // Проверяем, есть ли хотя бы одно непрочитанное сообщение (is_read: 0)
-        const hasUnread = Object.keys(userMessages).some((key) => {
-          const message = userMessages[key];
+        const hasUnread = Array.isArray(userMessages) && userMessages.some((message) => {
           return message && message.is_read === 0;
         });
         
@@ -85,13 +87,51 @@ export default function ProfileScreen() {
       const users = messagesData.users || {};
       setMessagesUsers(users);
       setMessagesData(messagesData);
+      
+      // Если чат открыт с пользователем, проверяем есть ли новые непрочитанные сообщения
+      if (selectedChatUser && selectedChatUser.id) {
+        const messages = messagesData.messages || {};
+        // Находим userId по ключу в messagesUsers
+        const userId = Object.keys(users).find(id => {
+          const user = users[id];
+          return user?.id === selectedChatUser.id || id === String(selectedChatUser.id);
+        }) || String(selectedChatUser.id);
+        
+        const userMessages = messages[userId] || [];
+        // Проверяем, есть ли непрочитанные сообщения от этого пользователя
+        const hasUnread = Array.isArray(userMessages) && userMessages.some((message) => {
+          return message && message.is_read === 0;
+        });
+        
+        // Если есть непрочитанные сообщения, отправляем запрос о прочтении
+        if (hasUnread) {
+          (async () => {
+            try {
+              const token = await getToken();
+              if (token && selectedChatUser.id) {
+                const result = await readMessages(token, selectedChatUser.id);
+                if (result.status === 'success') {
+                  console.log('Auto-marked messages as read for user:', selectedChatUser.id);
+                }
+              }
+            } catch (error) {
+              console.error('Error auto-marking messages as read:', error);
+            }
+          })();
+        }
+        
+        // Автоскролл вниз при новых сообщениях
+        setTimeout(() => {
+          scrollViewRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
     });
 
     // Очищаем callback при размонтировании
     return () => {
       setMessagesCallback(null);
     };
-  }, []);
+  }, [selectedChatUser]);
 
   const checkAuth = async () => {
     const token = await getToken();
@@ -634,28 +674,59 @@ export default function ProfileScreen() {
   // Функция для подсчета непрочитанных сообщений от конкретного пользователя
   const getUnreadCountForUser = (userId: string | number): number => {
     const messages = messagesData.messages || {};
-    const userMessages = messages[userId] || {};
+    const userMessages = messages[userId] || [];
     
     // Подсчитываем сообщения с is_read: 0
-    let unreadCount = 0;
-    Object.keys(userMessages).forEach((key) => {
-      const message = userMessages[key];
-      if (message && message.is_read === 0) {
-        unreadCount++;
-      }
-    });
+    if (!Array.isArray(userMessages)) {
+      return 0;
+    }
     
-    return unreadCount;
+    return userMessages.filter((message) => message && message.is_read === 0).length;
   };
 
   // Функция для получения сообщений от конкретного пользователя
   const getMessagesForUser = (userId: string | number): any[] => {
     const messages = messagesData.messages || {};
-    const userMessages = messages[userId] || {};
+    const userMessages = messages[userId] || [];
     
-    // Преобразуем объект сообщений в массив и сортируем по ID
-    const messagesArray = Object.keys(userMessages).map((key) => userMessages[key]);
-    return messagesArray.sort((a, b) => (a.id || 0) - (b.id || 0));
+    // Если это массив, сортируем по created_at
+    if (!Array.isArray(userMessages)) {
+      return [];
+    }
+    
+    return [...userMessages].sort((a, b) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateA - dateB;
+    });
+  };
+
+  // Функция для отправки сообщения
+  const handleSendMessage = async () => {
+    if (!messageText.trim() || !selectedChatUser || sendingMessage) {
+      return;
+    }
+
+    try {
+      setSendingMessage(true);
+      const token = await getToken();
+      if (!token || !selectedChatUser.id) {
+        return;
+      }
+
+      const result = await sendMessage(token, selectedChatUser.id, messageText.trim());
+      if (result.status === 'success') {
+        setMessageText('');
+        // Прокручиваем вниз после отправки
+        setTimeout(() => {
+          scrollViewRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+    } finally {
+      setSendingMessage(false);
+    }
   };
 
   // Функция для открытия чата с пользователем
@@ -663,6 +734,11 @@ export default function ProfileScreen() {
     const user = messagesUsers[userId];
     if (user) {
       setSelectedChatUser(user);
+      
+      // Прокручиваем вниз при открытии чата
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 300);
       
       // Отправляем запрос о прочтении сообщений
       try {
@@ -676,14 +752,16 @@ export default function ProfileScreen() {
             setMessagesData((prevData: any) => {
               const updatedData = { ...prevData };
               const messages = updatedData.messages || {};
-              const userMessages = messages[userId] || {};
+              const userMessages = messages[userId] || [];
               
               // Помечаем все сообщения от этого пользователя как прочитанные
-              Object.keys(userMessages).forEach((key) => {
-                if (userMessages[key]) {
-                  userMessages[key].is_read = 1;
-                }
-              });
+              if (Array.isArray(userMessages)) {
+                userMessages.forEach((message) => {
+                  if (message) {
+                    message.is_read = 1;
+                  }
+                });
+              }
               
               return updatedData;
             });
@@ -691,8 +769,11 @@ export default function ProfileScreen() {
             // Пересчитываем количество непрочитанных сообщений
             const messages = messagesData.messages || {};
             const usersCount = Object.keys(messages).filter((uid) => {
-              const userMsgs = messages[uid] || {};
-              return Object.keys(userMsgs).some((key) => userMsgs[key]?.is_read === 0);
+              const userMsgs = messages[uid] || [];
+              if (!Array.isArray(userMsgs)) {
+                return false;
+              }
+              return userMsgs.some((message) => message && message.is_read === 0);
             }).length;
             setUnreadMessagesCount(usersCount);
           }
@@ -1038,17 +1119,34 @@ export default function ProfileScreen() {
                         <Text style={styles.messagesBackButtonText}>←</Text>
                       </Pressable>
                       <View style={styles.messagesHeaderAvatarContainer}>
-                        {selectedChatUser?.image ? (
-                          <Image
-                            source={{ uri: getImageUrl(selectedChatUser.image) || '' }}
-                            style={styles.messagesHeaderAvatar}
-                            contentFit="cover"
-                          />
-                        ) : (
-                          <View style={[styles.messagesHeaderAvatar, styles.messagesHeaderAvatarPlaceholder]}>
-                            <View style={styles.messagesHeaderAvatarInner} />
-                          </View>
-                        )}
+                        {(() => {
+                          // Находим актуального пользователя из messagesUsers для получения актуального is_online
+                          const userId = Object.keys(messagesUsers).find(id => {
+                            const user = messagesUsers[id];
+                            return user?.id === selectedChatUser?.id || id === String(selectedChatUser?.id);
+                          });
+                          const actualUser = userId ? messagesUsers[userId] : selectedChatUser;
+                          const isOnline = actualUser?.is_online === 1;
+                          
+                          return selectedChatUser?.image ? (
+                            <Image
+                              source={{ uri: getImageUrl(selectedChatUser.image) || '' }}
+                              style={[
+                                styles.messagesHeaderAvatar,
+                                { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
+                              ]}
+                              contentFit="cover"
+                            />
+                          ) : (
+                            <View style={[
+                              styles.messagesHeaderAvatar,
+                              styles.messagesHeaderAvatarPlaceholder,
+                              { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
+                            ]}>
+                              <View style={styles.messagesHeaderAvatarInner} />
+                            </View>
+                          );
+                        })()}
                       </View>
                       <Text style={styles.messagesTitle}>
                         {selectedChatUser?.name || 'Пользователь'}
@@ -1067,44 +1165,74 @@ export default function ProfileScreen() {
                     <Text style={styles.messagesCloseButton}>✕</Text>
                   </Pressable>
                 </View>
-                <ScrollView style={styles.messagesContent}>
-                  {selectedChatUser ? (
-                    // Показываем чат с выбранным пользователем
-                    (() => {
-                      // Находим userId по ключу в messagesUsers
-                      const userId = Object.keys(messagesUsers).find(id => {
-                        const user = messagesUsers[id];
-                        return user?.id === selectedChatUser.id || id === String(selectedChatUser.id);
-                      }) || selectedChatUser.id;
-                      const chatMessages = userId ? getMessagesForUser(userId) : [];
-                      
-                      return chatMessages.length === 0 ? (
-                        <Text style={styles.messagesEmptyText}>Нет сообщений</Text>
-                      ) : (
-                        chatMessages.map((message: any, index: number) => {
-                          const isFromCurrentUser = message.sender_id === userData?.id;
-                          return (
-                            <View
-                              key={message.id || index}
-                              style={[
-                                styles.chatMessage,
-                                isFromCurrentUser ? styles.chatMessageSent : styles.chatMessageReceived
-                              ]}
-                            >
-                              <Text style={[
-                                styles.chatMessageText,
-                                isFromCurrentUser ? styles.chatMessageTextSent : styles.chatMessageTextReceived
-                              ]}>
-                                {message.message_text || ''}
-                              </Text>
-                            </View>
-                          );
-                        })
-                      );
-                    })()
+                {selectedChatUser ? (
+                  <>
+                    <ScrollView 
+                      ref={scrollViewRef}
+                      style={styles.messagesContent}
+                      onContentSizeChange={() => {
+                        scrollViewRef.current?.scrollToEnd({ animated: true });
+                      }}
+                    >
+                      {(() => {
+                        // Находим userId по ключу в messagesUsers
+                        const userId = Object.keys(messagesUsers).find(id => {
+                          const user = messagesUsers[id];
+                          return user?.id === selectedChatUser.id || id === String(selectedChatUser.id);
+                        }) || selectedChatUser.id;
+                        const chatMessages = userId ? getMessagesForUser(userId) : [];
+                        
+                        return chatMessages.length === 0 ? (
+                          <Text style={styles.messagesEmptyText}>Нет сообщений</Text>
+                        ) : (
+                          chatMessages.map((message: any, index: number) => {
+                            const isFromCurrentUser = message.sender_id === userData?.id;
+                            return (
+                              <View
+                                key={message.id || index}
+                                style={[
+                                  styles.chatMessage,
+                                  isFromCurrentUser ? styles.chatMessageSent : styles.chatMessageReceived
+                                ]}
+                              >
+                                <Text style={[
+                                  styles.chatMessageText,
+                                  isFromCurrentUser ? styles.chatMessageTextSent : styles.chatMessageTextReceived
+                                ]}>
+                                  {message.message_text || ''}
+                                </Text>
+                              </View>
+                            );
+                          })
+                        );
+                      })()}
+                    </ScrollView>
+                    <View style={styles.chatInputContainer}>
+                      <TextInput
+                        style={styles.chatInput}
+                        value={messageText}
+                        onChangeText={setMessageText}
+                        placeholder="Введите сообщение..."
+                        placeholderTextColor="#999"
+                        multiline
+                        onSubmitEditing={handleSendMessage}
+                      />
+                      <Pressable
+                        style={[styles.chatSendButton, (!messageText.trim() || sendingMessage) && styles.chatSendButtonDisabled]}
+                        onPress={handleSendMessage}
+                        disabled={!messageText.trim() || sendingMessage}
+                      >
+                        {sendingMessage ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Text style={styles.chatSendButtonText}>Отправить</Text>
+                        )}
+                      </Pressable>
+                    </View>
+                  </>
                   ) : (
-                    // Показываем список пользователей
-                    Object.keys(messagesUsers).length === 0 ? (
+                    <ScrollView style={styles.messagesContent}>
+                      {Object.keys(messagesUsers).length === 0 ? (
                       <Text style={styles.messagesEmptyText}>Здесь будут ваши сообщения</Text>
                     ) : (
                       Object.keys(messagesUsers).map((userId) => {
@@ -1150,10 +1278,10 @@ export default function ProfileScreen() {
                             </Text>
                           </Pressable>
                         );
-                      })
-                    )
+                        })
+                      )}
+                    </ScrollView>
                   )}
-                </ScrollView>
               </Animated.View>
             </TouchableWithoutFeedback>
           </View>
@@ -1492,7 +1620,6 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     borderWidth: 2,
-    borderColor: '#4ECDC4',
     backgroundColor: '#f0f0f0',
   },
   messagesHeaderAvatarPlaceholder: {
@@ -1605,6 +1732,42 @@ const styles = StyleSheet.create({
   },
   chatMessageTextReceived: {
     color: '#333',
+  },
+  chatInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    backgroundColor: '#fff',
+  },
+  chatInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    fontSize: 16,
+    maxHeight: 100,
+    marginRight: 8,
+  },
+  chatSendButton: {
+    backgroundColor: '#4ECDC4',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    minWidth: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatSendButtonDisabled: {
+    opacity: 0.5,
+  },
+  chatSendButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

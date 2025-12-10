@@ -321,3 +321,32 @@ export const readMessages = async (token: string, chat_partner_id: number) => {
   }
 };
 
+export const sendMessage = async (token: string, receiver_id: number, message_text: string) => {
+  const data = {
+    token,
+    receiver_id,
+    message_text
+  };
+
+  try {
+    const response = await fetch(`${baseApi}/send_message`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      return {status: 'failed', data: responseData};
+    }
+
+    return {status: 'success', data: responseData};
+  } catch (error) {
+    console.error('Error:', error);
+    return {status: 'failed', error: error};
+  }
+};
+
