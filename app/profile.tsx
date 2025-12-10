@@ -71,9 +71,13 @@ export default function ProfileScreen() {
       
       Object.keys(messages).forEach((userId) => {
         const userMessages = messages[userId] || [];
-        // Проверяем, есть ли хотя бы одно непрочитанное сообщение (is_read: 0)
+        const userIdNum = parseInt(userId, 10);
+        
+        // Проверяем, есть ли хотя бы одно входящее непрочитанное сообщение (sender_id === userId и is_read: 0)
         const hasUnread = Array.isArray(userMessages) && userMessages.some((message) => {
-          return message && message.is_read === 0;
+          return message && 
+                 message.sender_id === userIdNum && 
+                 message.is_read === 0;
         });
         
         if (hasUnread) {
@@ -88,8 +92,8 @@ export default function ProfileScreen() {
       setMessagesUsers(users);
       setMessagesData(messagesData);
       
-      // Если чат открыт с пользователем, проверяем есть ли новые непрочитанные сообщения
-      if (selectedChatUser && selectedChatUser.id) {
+      // Если чат открыт с пользователем И модальное окно видимо, проверяем есть ли новые непрочитанные сообщения
+      if (selectedChatUser && selectedChatUser.id && messagesVisible) {
         const messages = messagesData.messages || {};
         // Находим userId по ключу в messagesUsers
         const userId = Object.keys(users).find(id => {
@@ -98,9 +102,13 @@ export default function ProfileScreen() {
         }) || String(selectedChatUser.id);
         
         const userMessages = messages[userId] || [];
-        // Проверяем, есть ли непрочитанные сообщения от этого пользователя
+        const userIdNum = typeof userId === 'string' ? parseInt(userId, 10) : parseInt(String(userId), 10);
+        
+        // Проверяем, есть ли входящие непрочитанные сообщения от этого пользователя (sender_id === userId и is_read: 0)
         const hasUnread = Array.isArray(userMessages) && userMessages.some((message) => {
-          return message && message.is_read === 0;
+          return message && 
+                 message.sender_id === userIdNum && 
+                 message.is_read === 0;
         });
         
         // Если есть непрочитанные сообщения, отправляем запрос о прочтении
@@ -131,7 +139,7 @@ export default function ProfileScreen() {
     return () => {
       setMessagesCallback(null);
     };
-  }, [selectedChatUser]);
+  }, [selectedChatUser, messagesVisible]);
 
   const checkAuth = async () => {
     const token = await getToken();
@@ -675,13 +683,18 @@ export default function ProfileScreen() {
   const getUnreadCountForUser = (userId: string | number): number => {
     const messages = messagesData.messages || {};
     const userMessages = messages[userId] || [];
+    const userIdNum = typeof userId === 'string' ? parseInt(userId, 10) : userId;
     
-    // Подсчитываем сообщения с is_read: 0
+    // Подсчитываем только входящие непрочитанные сообщения (sender_id === userId и is_read === 0)
     if (!Array.isArray(userMessages)) {
       return 0;
     }
     
-    return userMessages.filter((message) => message && message.is_read === 0).length;
+    return userMessages.filter((message) => {
+      return message && 
+             message.sender_id === userIdNum && 
+             message.is_read === 0;
+    }).length;
   };
 
   // Функция для получения сообщений от конкретного пользователя
@@ -754,28 +767,40 @@ export default function ProfileScreen() {
               const messages = updatedData.messages || {};
               const userMessages = messages[userId] || [];
               
-              // Помечаем все сообщения от этого пользователя как прочитанные
+              // Помечаем все входящие сообщения от этого пользователя как прочитанные
               if (Array.isArray(userMessages)) {
+                const userIdNum = typeof userId === 'string' ? parseInt(userId, 10) : userId;
                 userMessages.forEach((message) => {
-                  if (message) {
+                  if (message && message.sender_id === userIdNum) {
                     message.is_read = 1;
                   }
                 });
               }
               
+              // Пересчитываем количество непрочитанных пользователей сразу
+              let usersWithUnreadCount = 0;
+              Object.keys(messages).forEach((uid) => {
+                const userMsgs = messages[uid] || [];
+                const uidNum = parseInt(uid, 10);
+                
+                if (Array.isArray(userMsgs)) {
+                  const hasUnread = userMsgs.some((message) => {
+                    return message && 
+                           message.sender_id === uidNum && 
+                           message.is_read === 0;
+                  });
+                  
+                  if (hasUnread) {
+                    usersWithUnreadCount++;
+                  }
+                }
+              });
+              
+              // Обновляем счетчик непрочитанных сразу
+              setUnreadMessagesCount(usersWithUnreadCount);
+              
               return updatedData;
             });
-            
-            // Пересчитываем количество непрочитанных сообщений
-            const messages = messagesData.messages || {};
-            const usersCount = Object.keys(messages).filter((uid) => {
-              const userMsgs = messages[uid] || [];
-              if (!Array.isArray(userMsgs)) {
-                return false;
-              }
-              return userMsgs.some((message) => message && message.is_read === 0);
-            }).length;
-            setUnreadMessagesCount(usersCount);
           }
         }
       } catch (error) {
@@ -787,6 +812,39 @@ export default function ProfileScreen() {
   // Функция для возврата к списку пользователей
   const handleBackToUsers = () => {
     setSelectedChatUser(null);
+  };
+
+  // Функция для форматирования времени из created_at
+  const formatMessageTime = (createdAt: string | null | undefined): string => {
+    if (!createdAt) return '';
+    
+    try {
+      // Парсим строку времени (формат "2025-12-10 20:03:11")
+      // Если строка не содержит информации о часовом поясе, 
+      // интерпретируем её как UTC и конвертируем в локальное время
+      let date: Date;
+      
+      // Проверяем, есть ли информация о часовом поясе
+      if (createdAt.includes('T') || createdAt.includes('Z') || createdAt.includes('+') || createdAt.includes('-', 10)) {
+        // Уже есть информация о часовом поясе
+        date = new Date(createdAt);
+      } else {
+        // Нет информации о часовом поясе, предполагаем UTC и добавляем 'Z'
+        date = new Date(createdAt.replace(' ', 'T') + 'Z');
+      }
+      
+      // Используем локальное время устройства
+      const hours = date.getHours();
+      const minutes = date.getMinutes();
+      
+      // Формат 24 часа (локальное время устройства)
+      const hoursStr = hours.toString().padStart(2, '0');
+      const minutesStr = minutes.toString().padStart(2, '0');
+      
+      return `${hoursStr}:${minutesStr}`;
+    } catch (error) {
+      return '';
+    }
   };
 
   const formatDate = (dateString: string | null | undefined) => {
@@ -1200,6 +1258,12 @@ export default function ProfileScreen() {
                                   isFromCurrentUser ? styles.chatMessageTextSent : styles.chatMessageTextReceived
                                 ]}>
                                   {message.message_text || ''}
+                                </Text>
+                                <Text style={[
+                                  styles.chatMessageTime,
+                                  isFromCurrentUser ? styles.chatMessageTimeSent : styles.chatMessageTimeReceived
+                                ]}>
+                                  {formatMessageTime(message.created_at)}
                                 </Text>
                               </View>
                             );
@@ -1645,7 +1709,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   messagesContent: {
-    flex: 1
+    flex: 1,
+    padding: 8
   },
   messagesEmptyText: {
     textAlign: 'center',
@@ -1732,6 +1797,19 @@ const styles = StyleSheet.create({
   },
   chatMessageTextReceived: {
     color: '#333',
+  },
+  chatMessageTime: {
+    fontSize: 11,
+    marginTop: 4,
+    opacity: 0.7,
+  },
+  chatMessageTimeSent: {
+    color: '#fff',
+    textAlign: 'right',
+  },
+  chatMessageTimeReceived: {
+    color: '#666',
+    textAlign: 'left',
   },
   chatInputContainer: {
     flexDirection: 'row',
