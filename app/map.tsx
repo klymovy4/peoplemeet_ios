@@ -583,7 +583,7 @@ export default function MapScreen() {
                             </View>
                           )}
                         </View>
-                        <Text style={styles.messagesTitle} numberOfLines={1}>
+                        <Text style={styles.messagesTitle}>
                           {selectedChatUser?.name || 'Пользователь'}
                         </Text>
                       </>
@@ -652,11 +652,18 @@ export default function MapScreen() {
                                 {user?.image ? (
                                   <Image
                                     source={{ uri: getImageUrl(user.image) || '' }}
-                                    style={styles.messageUserAvatar}
+                                    style={[
+                                      styles.messageUserAvatar,
+                                      { borderColor: user?.is_online === 1 ? '#4ECDC4' : '#FF6B6B' }
+                                    ]}
                                     contentFit="cover"
                                   />
                                 ) : (
-                                  <View style={[styles.messageUserAvatar, styles.messageUserAvatarPlaceholder]}>
+                                  <View style={[
+                                    styles.messageUserAvatar,
+                                    styles.messageUserAvatarPlaceholder,
+                                    { borderColor: user?.is_online === 1 ? '#4ECDC4' : '#FF6B6B' }
+                                  ]}>
                                     <View style={styles.messageUserAvatarInner} />
                                   </View>
                                 )}
@@ -844,12 +851,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
+    minHeight: 60,
+    height: 60,
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
   messagesBackButton: {
     marginRight: 12,
-    padding: 4,
   },
   messagesBackButtonText: {
     fontSize: 24,
@@ -857,7 +865,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   messagesHeaderAvatarContainer: {
-    marginRight: 12,
+    marginRight: 8,
   },
   messagesHeaderAvatar: {
     width: 40,
@@ -915,7 +923,6 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     borderWidth: 2,
-    borderColor: '#4ECDC4',
     backgroundColor: '#f0f0f0',
   },
   messageUserBadge: {
