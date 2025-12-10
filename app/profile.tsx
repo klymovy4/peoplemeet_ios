@@ -664,13 +664,13 @@ export default function ProfileScreen() {
                   {userData.image ? (
                       <Image
                           source={{uri: getImageUrl(userData.image) || ''}}
-                          style={styles.profileImage}
+                          style={[styles.profileImage, { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }]}
                           contentFit="cover"
                           placeholderContentFit="cover"
                           onError={() => console.log('Error loading image:', userData.image)}
                       />
                   ) : (
-                      <View style={styles.placeholderImage}>
+                      <View style={[styles.placeholderImage, { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }]}>
                         <Text style={styles.placeholderText}>Нет фото</Text>
                       </View>
                   )}
