@@ -1,7 +1,7 @@
 import { getToken, removeToken, saveUserData } from '@/services/auth';
-import { getSelf, uploadAvatar, editProfile, getOnline } from '@/services/api';
+import { getSelf, uploadAvatar, editProfile, getOnline, readMessages } from '@/services/api';
 import { enableUsersOnlinePolling, disableUsersOnlinePolling } from '@/services/usersOnlineInterval';
-import { startMessagesInterval, stopMessagesInterval } from '@/services/messagesInterval';
+import { startMessagesInterval, stopMessagesInterval, setMessagesCallback } from '@/services/messagesInterval';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
@@ -32,6 +32,10 @@ export default function ProfileScreen() {
   const [description, setDescription] = useState('');
   const [thoughts, setThoughts] = useState('');
   const [messagesVisible, setMessagesVisible] = useState(false);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+  const [messagesUsers, setMessagesUsers] = useState<any>({});
+  const [messagesData, setMessagesData] = useState<any>({});
+  const [selectedChatUser, setSelectedChatUser] = useState<any | null>(null);
   const slideAnim = useSharedValue(1); // Начальное значение 1 = плашка скрыта внизу
   
   // Анимированный стиль для плашки сообщений (должен быть на верхнем уровне)
@@ -44,6 +48,49 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     checkAuth();
+  }, []);
+
+  useEffect(() => {
+    // Устанавливаем callback для получения сообщений
+    setMessagesCallback((messagesData) => {
+      console.log('ProfileScreen: Received messages data:', messagesData);
+      
+      if (!messagesData) {
+        setUnreadMessagesCount(0);
+        setMessagesUsers({});
+        setMessagesData({});
+        return;
+      }
+      
+      // Подсчитываем количество пользователей с непрочитанными сообщениями
+      const messages = messagesData.messages || {};
+      let usersWithUnreadCount = 0;
+      
+      Object.keys(messages).forEach((userId) => {
+        const userMessages = messages[userId] || {};
+        // Проверяем, есть ли хотя бы одно непрочитанное сообщение (is_read: 0)
+        const hasUnread = Object.keys(userMessages).some((key) => {
+          const message = userMessages[key];
+          return message && message.is_read === 0;
+        });
+        
+        if (hasUnread) {
+          usersWithUnreadCount++;
+        }
+      });
+      
+      setUnreadMessagesCount(usersWithUnreadCount);
+      
+      // Сохраняем данные о пользователях и сообщениях
+      const users = messagesData.users || {};
+      setMessagesUsers(users);
+      setMessagesData(messagesData);
+    });
+
+    // Очищаем callback при размонтировании
+    return () => {
+      setMessagesCallback(null);
+    };
   }, []);
 
   const checkAuth = async () => {
@@ -584,6 +631,83 @@ export default function ProfileScreen() {
     return `https://peoplemeet.com.ua/uploads/${imageName}`;
   };
 
+  // Функция для подсчета непрочитанных сообщений от конкретного пользователя
+  const getUnreadCountForUser = (userId: string | number): number => {
+    const messages = messagesData.messages || {};
+    const userMessages = messages[userId] || {};
+    
+    // Подсчитываем сообщения с is_read: 0
+    let unreadCount = 0;
+    Object.keys(userMessages).forEach((key) => {
+      const message = userMessages[key];
+      if (message && message.is_read === 0) {
+        unreadCount++;
+      }
+    });
+    
+    return unreadCount;
+  };
+
+  // Функция для получения сообщений от конкретного пользователя
+  const getMessagesForUser = (userId: string | number): any[] => {
+    const messages = messagesData.messages || {};
+    const userMessages = messages[userId] || {};
+    
+    // Преобразуем объект сообщений в массив и сортируем по ID
+    const messagesArray = Object.keys(userMessages).map((key) => userMessages[key]);
+    return messagesArray.sort((a, b) => (a.id || 0) - (b.id || 0));
+  };
+
+  // Функция для открытия чата с пользователем
+  const handleOpenChat = async (userId: string | number) => {
+    const user = messagesUsers[userId];
+    if (user) {
+      setSelectedChatUser(user);
+      
+      // Отправляем запрос о прочтении сообщений
+      try {
+        const token = await getToken();
+        if (token && user.id) {
+          const result = await readMessages(token, user.id);
+          if (result.status === 'success') {
+            console.log('Messages marked as read for user:', user.id);
+            
+            // Обновляем локальное состояние сообщений, помечая их как прочитанные
+            setMessagesData((prevData: any) => {
+              const updatedData = { ...prevData };
+              const messages = updatedData.messages || {};
+              const userMessages = messages[userId] || {};
+              
+              // Помечаем все сообщения от этого пользователя как прочитанные
+              Object.keys(userMessages).forEach((key) => {
+                if (userMessages[key]) {
+                  userMessages[key].is_read = 1;
+                }
+              });
+              
+              return updatedData;
+            });
+            
+            // Пересчитываем количество непрочитанных сообщений
+            const messages = messagesData.messages || {};
+            const usersCount = Object.keys(messages).filter((uid) => {
+              const userMsgs = messages[uid] || {};
+              return Object.keys(userMsgs).some((key) => userMsgs[key]?.is_read === 0);
+            }).length;
+            setUnreadMessagesCount(usersCount);
+          }
+        }
+      } catch (error) {
+        console.error('Error marking messages as read:', error);
+      }
+    }
+  };
+
+  // Функция для возврата к списку пользователей
+  const handleBackToUsers = () => {
+    setSelectedChatUser(null);
+  };
+
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return 'Не указано';
     try {
@@ -647,6 +771,13 @@ export default function ProfileScreen() {
         >
           <View style={[styles.messageIcon, styles.messageIconPlaceholder]}>
             <Text style={styles.messageIconText}>✉️</Text>
+            {unreadMessagesCount > 0 && (
+              <View style={styles.messageBadge}>
+                <Text style={styles.messageBadgeText}>
+                  {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
+                </Text>
+              </View>
+            )}
           </View>
         </Pressable>
       </View>
@@ -898,9 +1029,37 @@ export default function ProfileScreen() {
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
               <Animated.View style={[styles.messagesSheet, messagesSheetStyle]}>
                 <View style={styles.messagesHeader}>
-                  <Text style={styles.messagesTitle}>Сообщения2</Text>
+                  {selectedChatUser ? (
+                    <>
+                      <Pressable
+                        style={styles.messagesBackButton}
+                        onPress={handleBackToUsers}
+                      >
+                        <Text style={styles.messagesBackButtonText}>←</Text>
+                      </Pressable>
+                      <View style={styles.messagesHeaderAvatarContainer}>
+                        {selectedChatUser?.image ? (
+                          <Image
+                            source={{ uri: getImageUrl(selectedChatUser.image) || '' }}
+                            style={styles.messagesHeaderAvatar}
+                            contentFit="cover"
+                          />
+                        ) : (
+                          <View style={[styles.messagesHeaderAvatar, styles.messagesHeaderAvatarPlaceholder]}>
+                            <View style={styles.messagesHeaderAvatarInner} />
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.messagesTitle} numberOfLines={1}>
+                        {selectedChatUser?.name || 'Пользователь'}
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={styles.messagesTitle}>Сообщения2</Text>
+                  )}
                   <Pressable
                     onPress={() => {
+                      setSelectedChatUser(null);
                       slideAnim.value = withTiming(1, { duration: 300 });
                       setTimeout(() => setMessagesVisible(false), 300);
                     }}
@@ -909,7 +1068,84 @@ export default function ProfileScreen() {
                   </Pressable>
                 </View>
                 <ScrollView style={styles.messagesContent}>
-                  <Text style={styles.messagesEmptyText}>Здесь будут ваши сообщения</Text>
+                  {selectedChatUser ? (
+                    // Показываем чат с выбранным пользователем
+                    (() => {
+                      // Находим userId по ключу в messagesUsers
+                      const userId = Object.keys(messagesUsers).find(id => {
+                        const user = messagesUsers[id];
+                        return user?.id === selectedChatUser.id || id === String(selectedChatUser.id);
+                      }) || selectedChatUser.id;
+                      const chatMessages = userId ? getMessagesForUser(userId) : [];
+                      
+                      return chatMessages.length === 0 ? (
+                        <Text style={styles.messagesEmptyText}>Нет сообщений</Text>
+                      ) : (
+                        chatMessages.map((message: any, index: number) => {
+                          const isFromCurrentUser = message.sender_id === userData?.id;
+                          return (
+                            <View
+                              key={message.id || index}
+                              style={[
+                                styles.chatMessage,
+                                isFromCurrentUser ? styles.chatMessageSent : styles.chatMessageReceived
+                              ]}
+                            >
+                              <Text style={[
+                                styles.chatMessageText,
+                                isFromCurrentUser ? styles.chatMessageTextSent : styles.chatMessageTextReceived
+                              ]}>
+                                {message.message_text || ''}
+                              </Text>
+                            </View>
+                          );
+                        })
+                      );
+                    })()
+                  ) : (
+                    // Показываем список пользователей
+                    Object.keys(messagesUsers).length === 0 ? (
+                      <Text style={styles.messagesEmptyText}>Здесь будут ваши сообщения</Text>
+                    ) : (
+                      Object.keys(messagesUsers).map((userId) => {
+                        const user = messagesUsers[userId];
+                        return (
+                          <Pressable
+                            key={userId}
+                            style={styles.messageUserItem}
+                            onPress={() => handleOpenChat(userId)}
+                          >
+                            <View style={styles.messageUserAvatarContainer}>
+                              {user?.image ? (
+                                <Image
+                                  source={{ uri: getImageUrl(user.image) || '' }}
+                                  style={styles.messageUserAvatar}
+                                  contentFit="cover"
+                                />
+                              ) : (
+                                <View style={[styles.messageUserAvatar, styles.messageUserAvatarPlaceholder]}>
+                                  <View style={styles.messageUserAvatarInner} />
+                                </View>
+                              )}
+                              {getUnreadCountForUser(userId) > 0 && (
+                                <View style={[
+                                  styles.messageUserBadge,
+                                  { backgroundColor: user?.is_online === 1 ? '#4ECDC4' : '#FF6B6B' }
+                                ]}>
+                                  <Text style={styles.messageUserBadgeText}>
+                                    {getUnreadCountForUser(userId) > 99 ? '99+' : getUnreadCountForUser(userId)}
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={styles.messageUserName}>
+                              {user?.name || 'Пользователь'}
+                            </Text>
+                          </Pressable>
+                        );
+                      })
+                    )
+                  )}
                 </ScrollView>
               </Animated.View>
             </TouchableWithoutFeedback>
@@ -988,6 +1224,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#4ECDC4',
     backgroundColor: '#f0f0f0',
+    position: 'relative',
   },
   messageIconPlaceholder: {
     backgroundColor: '#e0e0e0',
@@ -996,6 +1233,25 @@ const styles = StyleSheet.create({
   },
   messageIconText: {
     fontSize: 24,
+  },
+  messageBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#FF6B6B',
+    borderWidth: 2,
+    borderColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  messageBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
   title: {
     marginBottom: 20,
@@ -1207,14 +1463,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
+  },
+  messagesBackButton: {
+    marginRight: 12,
+    padding: 4,
+  },
+  messagesBackButtonText: {
+    fontSize: 24,
+    color: '#333',
+    fontWeight: 'bold',
+  },
+  messagesHeaderAvatarContainer: {
+    marginRight: 12,
+  },
+  messagesHeaderAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: '#4ECDC4',
+    backgroundColor: '#f0f0f0',
+  },
+  messagesHeaderAvatarPlaceholder: {
+    backgroundColor: '#e0e0e0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  messagesHeaderAvatarInner: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#ccc',
   },
   messagesTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
+    flex: 1,
   },
   messagesCloseButton: {
     fontSize: 24,
@@ -1222,14 +1510,94 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   messagesContent: {
-    flex: 1,
-    padding: 20,
+    flex: 1
   },
   messagesEmptyText: {
     textAlign: 'center',
     color: '#999',
     fontSize: 16,
     marginTop: 50,
+  },
+  messageUserItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  messageUserAvatarContainer: {
+    marginRight: 12,
+    position: 'relative',
+  },
+  messageUserAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: '#4ECDC4',
+    backgroundColor: '#f0f0f0',
+  },
+  messageUserBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  messageUserBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  messageUserAvatarPlaceholder: {
+    backgroundColor: '#e0e0e0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  messageUserAvatarInner: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#ccc',
+  },
+  messageUserName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  chatMessage: {
+    marginBottom: 12,
+    maxWidth: '80%',
+  },
+  chatMessageSent: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#4ECDC4',
+    borderRadius: 16,
+    borderTopRightRadius: 4,
+    padding: 12,
+  },
+  chatMessageReceived: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#e0e0e0',
+    borderRadius: 16,
+    borderTopLeftRadius: 4,
+    padding: 12,
+  },
+  chatMessageText: {
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  chatMessageTextSent: {
+    color: '#fff',
+  },
+  chatMessageTextReceived: {
+    color: '#333',
   },
 });
 

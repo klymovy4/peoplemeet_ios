@@ -293,3 +293,31 @@ export const getMessages = async (token: string) => {
   }
 };
 
+export const readMessages = async (token: string, chat_partner_id: number) => {
+  const data = {
+    token,
+    chat_partner_id
+  };
+
+  try {
+    const response = await fetch(`${baseApi}/read_messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      return {status: 'failed', data: responseData};
+    }
+
+    return {status: 'success', data: responseData};
+  } catch (error) {
+    console.error('Error:', error);
+    return {status: 'failed', error: error};
+  }
+};
+
