@@ -1158,15 +1158,18 @@ export default function ProfileScreen() {
           setTimeout(() => setMessagesVisible(false), 300);
         }}
       >
-        <TouchableWithoutFeedback
-          onPress={() => {
-            slideAnim.value = withTiming(1, { duration: 300 });
-            setTimeout(() => setMessagesVisible(false), 300);
-          }}
-        >
-          <View style={styles.messagesBackdrop}>
-            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <Animated.View style={[styles.messagesSheet, messagesSheetStyle]}>
+        <View style={styles.messagesBackdrop} pointerEvents="box-none">
+          <TouchableWithoutFeedback
+            onPress={() => {
+              slideAnim.value = withTiming(1, { duration: 300 });
+              setTimeout(() => setMessagesVisible(false), 300);
+            }}
+          >
+            <View style={StyleSheet.absoluteFill} />
+          </TouchableWithoutFeedback>
+          <View pointerEvents="box-none" style={{ flex: 1, justifyContent: 'flex-end' }}>
+            <Animated.View style={[styles.messagesSheet, messagesSheetStyle]} pointerEvents="auto">
+                <View style={styles.messagesSheetInner}>
                 <View style={styles.messagesHeader}>
                   {selectedChatUser ? (
                     <>
@@ -1224,13 +1227,20 @@ export default function ProfileScreen() {
                   </Pressable>
                 </View>
                 {selectedChatUser ? (
-                  <>
+                  <View style={styles.chatContainer}>
                     <ScrollView 
                       ref={scrollViewRef}
                       style={styles.messagesContent}
+                      contentContainerStyle={styles.messagesContentContainer}
                       onContentSizeChange={() => {
                         scrollViewRef.current?.scrollToEnd({ animated: true });
                       }}
+                      nestedScrollEnabled={true}
+                      showsVerticalScrollIndicator={true}
+                      scrollEnabled={true}
+                      bounces={true}
+                      alwaysBounceVertical={false}
+                      keyboardShouldPersistTaps="handled"
                     >
                       {(() => {
                         // Находим userId по ключу в messagesUsers
@@ -1293,63 +1303,73 @@ export default function ProfileScreen() {
                         )}
                       </Pressable>
                     </View>
-                  </>
-                  ) : (
-                    <ScrollView style={styles.messagesContent}>
-                      {Object.keys(messagesUsers).length === 0 ? (
-                      <Text style={styles.messagesEmptyText}>Здесь будут ваши сообщения</Text>
-                    ) : (
-                      Object.keys(messagesUsers).map((userId) => {
-                        const user = messagesUsers[userId];
-                        return (
-                          <Pressable
-                            key={userId}
-                            style={styles.messageUserItem}
-                            onPress={() => handleOpenChat(userId)}
-                          >
-                            <View style={styles.messageUserAvatarContainer}>
-                              {user?.image ? (
-                                <Image
-                                  source={{ uri: getImageUrl(user.image) || '' }}
-                                  style={[
+                  </View>
+                ) : (
+                    <View style={styles.messagesUsersContainer}>
+                      <ScrollView 
+                        style={styles.messagesContent}
+                        contentContainerStyle={styles.messagesUsersContentContainer}
+                        nestedScrollEnabled={true}
+                        showsVerticalScrollIndicator={true}
+                        scrollEnabled={true}
+                        bounces={true}
+                        keyboardShouldPersistTaps="handled"
+                      >
+                        {Object.keys(messagesUsers).length === 0 ? (
+                        <Text style={styles.messagesEmptyText}>Здесь будут ваши сообщения</Text>
+                      ) : (
+                        Object.keys(messagesUsers).map((userId) => {
+                          const user = messagesUsers[userId];
+                          return (
+                            <Pressable
+                              key={userId}
+                              style={styles.messageUserItem}
+                              onPress={() => handleOpenChat(userId)}
+                            >
+                              <View style={styles.messageUserAvatarContainer}>
+                                {user?.image ? (
+                                  <Image
+                                    source={{ uri: getImageUrl(user.image) || '' }}
+                                    style={[
+                                      styles.messageUserAvatar,
+                                      { borderColor: user?.is_online === 1 ? '#4ECDC4' : '#FF6B6B' }
+                                    ]}
+                                    contentFit="cover"
+                                  />
+                                ) : (
+                                  <View style={[
                                     styles.messageUserAvatar,
+                                    styles.messageUserAvatarPlaceholder,
                                     { borderColor: user?.is_online === 1 ? '#4ECDC4' : '#FF6B6B' }
-                                  ]}
-                                  contentFit="cover"
-                                />
-                              ) : (
-                                <View style={[
-                                  styles.messageUserAvatar,
-                                  styles.messageUserAvatarPlaceholder,
-                                  { borderColor: user?.is_online === 1 ? '#4ECDC4' : '#FF6B6B' }
-                                ]}>
-                                  <View style={styles.messageUserAvatarInner} />
-                                </View>
-                              )}
-                              {getUnreadCountForUser(userId) > 0 && (
-                                <View style={[
-                                  styles.messageUserBadge,
-                                  { backgroundColor: user?.is_online === 1 ? '#4ECDC4' : '#FF6B6B' }
-                                ]}>
-                                  <Text style={styles.messageUserBadgeText}>
-                                    {getUnreadCountForUser(userId) > 99 ? '99+' : getUnreadCountForUser(userId)}
-                                  </Text>
-                                </View>
-                              )}
-                            </View>
-                            <Text style={styles.messageUserName}>
-                              {user?.name || 'Пользователь'}
-                            </Text>
-                          </Pressable>
-                        );
-                        })
-                      )}
-                    </ScrollView>
+                                  ]}>
+                                    <View style={styles.messageUserAvatarInner} />
+                                  </View>
+                                )}
+                                {getUnreadCountForUser(userId) > 0 && (
+                                  <View style={[
+                                    styles.messageUserBadge,
+                                    { backgroundColor: user?.is_online === 1 ? '#4ECDC4' : '#FF6B6B' }
+                                  ]}>
+                                    <Text style={styles.messageUserBadgeText}>
+                                      {getUnreadCountForUser(userId) > 99 ? '99+' : getUnreadCountForUser(userId)}
+                                    </Text>
+                                  </View>
+                                )}
+                              </View>
+                              <Text style={styles.messageUserName}>
+                                {user?.name || 'Пользователь'}
+                              </Text>
+                            </Pressable>
+                          );
+                          })
+                        )}
+                      </ScrollView>
+                    </View>
                   )}
-              </Animated.View>
-            </TouchableWithoutFeedback>
+              </View>
+            </Animated.View>
           </View>
-        </TouchableWithoutFeedback>
+        </View>
       </Modal>
     </View>
   );
@@ -1657,6 +1677,12 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 16,
     maxHeight: '90%',
     minHeight: 600,
+    width: '100%',
+  },
+  messagesSheetInner: {
+    flex: 1,
+    flexDirection: 'column',
+    minHeight: 0,
   },
   messagesHeader: {
     flexDirection: 'row',
@@ -1707,10 +1733,28 @@ const styles = StyleSheet.create({
     fontSize: 24,
     color: '#666',
     fontWeight: 'bold',
+
+  },
+  chatContainer: {
+    flex: 1,
+    flexDirection: 'column',
+    minHeight: 0,
+
+  },
+  messagesUsersContainer: {
+    flex: 1,
+    minHeight: 0,
   },
   messagesContent: {
     flex: 1,
-    padding: 8
+    minHeight: 0,
+  },
+  messagesUsersContentContainer: {
+    paddingVertical: 8,
+  },
+  messagesContentContainer: {
+    padding: 8,
+    paddingBottom: 16,
   },
   messagesEmptyText: {
     textAlign: 'center',
