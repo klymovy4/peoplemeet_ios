@@ -25,6 +25,7 @@ export default function MapScreen() {
   const avatarAnim = useSharedValue({ x: 0, y: 0, scale: 1 });
   const userIdRef = useRef<number | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+  const lastMessageCountRef = useRef<number>(0); // Храним количество сообщений для проверки новых
 
   // Анимированный стиль для плашки сообщений (должен быть на верхнем уровне)
   const messagesSheetStyle = useAnimatedStyle(() => {
@@ -171,10 +172,19 @@ export default function MapScreen() {
           })();
         }
         
-        // Автоскролл вниз при новых сообщениях
-        setTimeout(() => {
-          scrollViewRef.current?.scrollToEnd({ animated: true });
-        }, 100);
+        // Проверяем, появились ли новые сообщения (больше чем было раньше)
+        const currentMessageCount = Array.isArray(userMessages) ? userMessages.length : 0;
+        const previousMessageCount = lastMessageCountRef.current;
+        
+        // Автоскролл вниз только если появились новые сообщения
+        if (currentMessageCount > previousMessageCount) {
+          setTimeout(() => {
+            scrollViewRef.current?.scrollToEnd({ animated: true });
+          }, 100);
+        }
+        
+        // Обновляем счетчик сообщений
+        lastMessageCountRef.current = currentMessageCount;
       }
     });
 
@@ -385,6 +395,9 @@ export default function MapScreen() {
     if (user) {
       setSelectedChatUser(user);
       
+      // Сбрасываем счетчик сообщений при открытии нового чата
+      lastMessageCountRef.current = 0;
+      
       // Отправляем запрос о прочтении сообщений
       try {
         const token = await getToken();
@@ -444,6 +457,8 @@ export default function MapScreen() {
   // Функция для возврата к списку пользователей
   const handleBackToUsers = () => {
     setSelectedChatUser(null);
+    // Сбрасываем счетчик сообщений при возврате к списку
+    lastMessageCountRef.current = 0;
   };
 
   if (loading) {

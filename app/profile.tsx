@@ -40,6 +40,7 @@ export default function ProfileScreen() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const slideAnim = useSharedValue(1); // Начальное значение 1 = плашка скрыта внизу
   const scrollViewRef = useRef<ScrollView>(null);
+  const lastMessageCountRef = useRef<number>(0); // Храним количество сообщений для проверки новых
   
   // Анимированный стиль для плашки сообщений (должен быть на верхнем уровне)
   const messagesSheetStyle = useAnimatedStyle(() => {
@@ -128,10 +129,19 @@ export default function ProfileScreen() {
           })();
         }
         
-        // Автоскролл вниз при новых сообщениях
-        setTimeout(() => {
-          scrollViewRef.current?.scrollToEnd({ animated: true });
-        }, 100);
+        // Проверяем, появились ли новые сообщения (больше чем было раньше)
+        const currentMessageCount = Array.isArray(userMessages) ? userMessages.length : 0;
+        const previousMessageCount = lastMessageCountRef.current;
+        
+        // Автоскролл вниз только если появились новые сообщения
+        if (currentMessageCount > previousMessageCount) {
+          setTimeout(() => {
+            scrollViewRef.current?.scrollToEnd({ animated: true });
+          }, 100);
+        }
+        
+        // Обновляем счетчик сообщений
+        lastMessageCountRef.current = currentMessageCount;
       }
     });
 
@@ -748,6 +758,9 @@ export default function ProfileScreen() {
     if (user) {
       setSelectedChatUser(user);
       
+      // Сбрасываем счетчик сообщений при открытии нового чата
+      lastMessageCountRef.current = 0;
+      
       // Прокручиваем вниз при открытии чата
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
@@ -812,6 +825,8 @@ export default function ProfileScreen() {
   // Функция для возврата к списку пользователей
   const handleBackToUsers = () => {
     setSelectedChatUser(null);
+    // Сбрасываем счетчик сообщений при возврате к списку
+    lastMessageCountRef.current = 0;
   };
 
   // Функция для форматирования времени из created_at
