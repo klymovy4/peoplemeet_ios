@@ -38,6 +38,7 @@ export default function ProfileScreen() {
   const [selectedChatUser, setSelectedChatUser] = useState<any | null>(null);
   const [messageText, setMessageText] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [showUserInfo, setShowUserInfo] = useState(false);
   const slideAnim = useSharedValue(1); // Начальное значение 1 = плашка скрыта внизу
   const scrollViewRef = useRef<ScrollView>(null);
   const lastMessageCountRef = useRef<number>(0); // Храним количество сообщений для проверки новых
@@ -757,6 +758,7 @@ export default function ProfileScreen() {
     const user = messagesUsers[userId];
     if (user) {
       setSelectedChatUser(user);
+      setShowUserInfo(false); // Сбрасываем показ информации при открытии нового чата
       
       // Сбрасываем счетчик сообщений при открытии нового чата
       lastMessageCountRef.current = 0;
@@ -1190,11 +1192,20 @@ export default function ProfileScreen() {
                     <>
                       <Pressable
                         style={styles.messagesBackButton}
-                        onPress={handleBackToUsers}
+                        onPress={() => {
+                          if (showUserInfo) {
+                            setShowUserInfo(false);
+                          } else {
+                            handleBackToUsers();
+                          }
+                        }}
                       >
                         <Text style={styles.messagesBackButtonText}>←</Text>
                       </Pressable>
-                      <View style={styles.messagesHeaderAvatarContainer}>
+                      <Pressable
+                        style={styles.messagesHeaderAvatarContainer}
+                        onPress={() => setShowUserInfo(true)}
+                      >
                         {(() => {
                           // Находим актуального пользователя из messagesUsers для получения актуального is_online
                           const userId = Object.keys(messagesUsers).find(id => {
@@ -1223,7 +1234,7 @@ export default function ProfileScreen() {
                             </View>
                           );
                         })()}
-                      </View>
+                      </Pressable>
                       <Text style={styles.messagesTitle}>
                         {selectedChatUser?.name || 'Пользователь'}
                       </Text>
@@ -1242,6 +1253,104 @@ export default function ProfileScreen() {
                   </Pressable>
                 </View>
                 {selectedChatUser ? (
+                  showUserInfo ? (
+                    <ScrollView style={styles.userInfoContainer} contentContainerStyle={styles.userInfoContent}>
+                      {(() => {
+                        // Находим актуального пользователя из messagesUsers
+                        const userId = Object.keys(messagesUsers).find(id => {
+                          const user = messagesUsers[id];
+                          return user?.id === selectedChatUser?.id || id === String(selectedChatUser?.id);
+                        });
+                        const actualUser = userId ? messagesUsers[userId] : selectedChatUser;
+                        const isOnline = actualUser?.is_online === 1;
+                        
+                        return (
+                          <>
+                            <View style={styles.userInfoImageContainer}>
+                              {actualUser?.image ? (
+                                <Image
+                                  source={{ uri: getImageUrl(actualUser.image) || '' }}
+                                  style={[
+                                    styles.userInfoImage,
+                                    { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
+                                  ]}
+                                  contentFit="cover"
+                                />
+                              ) : (
+                                <View style={[
+                                  styles.userInfoImage,
+                                  styles.userInfoImagePlaceholder,
+                                  { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
+                                ]}>
+                                  <View style={styles.userInfoImageInner} />
+                                </View>
+                              )}
+                            </View>
+                            
+                            <View style={styles.userInfoDetails}>
+                              <Text style={styles.userInfoName}>
+                                {actualUser?.name || 'Имя не указано'}
+                              </Text>
+                              
+                              <View style={styles.userInfoRow}>
+                                <Text style={styles.userInfoLabel}>Возраст:</Text>
+                                <Text style={styles.userInfoValue}>{actualUser?.age || 'не указан'}</Text>
+                              </View>
+                              
+                              <View style={styles.userInfoRow}>
+                                <Text style={styles.userInfoLabel}>Пол:</Text>
+                                <Text style={styles.userInfoValue}>
+                                  {actualUser?.sex === 'male' ? 'Мужской' : actualUser?.sex === 'female' ? 'Женский' : actualUser?.sex || 'не указан'}
+                                </Text>
+                              </View>
+                              
+                              <View style={styles.userInfoRow}>
+                                <Text style={styles.userInfoLabel}>Статус:</Text>
+                                {isOnline ? (
+                                  <Pressable
+                                    style={styles.userInfoShowOnMapButton}
+                                    onPress={() => {
+                                      // Закрываем модальное окно сообщений
+                                      slideAnim.value = withTiming(1, { duration: 300 });
+                                      setTimeout(() => {
+                                        setMessagesVisible(false);
+                                        // Переходим на карту с параметром userId для фокуса на маркер
+                                        router.push({
+                                          pathname: '/map',
+                                          params: { focusUserId: String(actualUser?.id || selectedChatUser?.id) }
+                                        });
+                                      }, 300);
+                                    }}
+                                  >
+                                    <Text style={styles.userInfoShowOnMapButtonText}>Show on map</Text>
+                                  </Pressable>
+                                ) : (
+                                  <Text style={styles.userInfoValue}>Оффлайн</Text>
+                                )}
+                              </View>
+                              
+                              {actualUser?.description && (
+                                <View style={styles.userInfoDescriptionContainer}>
+                                  <Text style={styles.userInfoDescriptionLabel}>Описание:</Text>
+                                  <Text style={styles.userInfoDescription}>
+                                    {actualUser.description}
+                                  </Text>
+                                </View>
+                              )}
+                              
+                              {actualUser?.thoughts && (
+                                <View style={styles.userInfoThoughtsContainer}>
+                                  <Text style={styles.userInfoThoughts}>
+                                    {actualUser.thoughts}
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+                          </>
+                        );
+                      })()}
+                    </ScrollView>
+                  ) : (
                   <View style={styles.chatContainer}>
                     <ScrollView 
                       ref={scrollViewRef}
@@ -1319,6 +1428,7 @@ export default function ProfileScreen() {
                       </Pressable>
                     </View>
                   </View>
+                  )
                 ) : (
                     <View style={styles.messagesUsersContainer}>
                       <ScrollView 
@@ -1904,6 +2014,104 @@ const styles = StyleSheet.create({
   chatSendButtonText: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  userInfoContainer: {
+    flex: 1,
+    minHeight: 0,
+  },
+  userInfoContent: {
+    padding: 16,
+  },
+  userInfoImageContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  userInfoImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    borderWidth: 3,
+    backgroundColor: '#f0f0f0',
+  },
+  userInfoImagePlaceholder: {
+    backgroundColor: '#e0e0e0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  userInfoImageInner: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#ccc',
+  },
+  userInfoDetails: {
+    width: '100%',
+  },
+  userInfoName: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  userInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  userInfoLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+    textTransform: 'uppercase',
+  },
+  userInfoValue: {
+    fontSize: 16,
+    color: '#333',
+  },
+  userInfoDescriptionContainer: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  userInfoDescriptionLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  userInfoDescription: {
+    fontSize: 16,
+    color: '#333',
+    lineHeight: 24,
+  },
+  userInfoThoughtsContainer: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  userInfoThoughts: {
+    fontSize: 16,
+    color: '#666',
+    fontStyle: 'italic',
+    lineHeight: 24,
+  },
+  userInfoShowOnMapButton: {
+    backgroundColor: '#4ECDC4',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  userInfoShowOnMapButtonText: {
+    color: '#fff',
+    fontSize: 14,
     fontWeight: '600',
   },
 });
