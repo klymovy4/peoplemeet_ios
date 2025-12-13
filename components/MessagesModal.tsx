@@ -35,6 +35,7 @@ interface MessagesModalProps {
   readMessages: (token: string, userId: number) => Promise<any>;
   setMessagesData: React.Dispatch<React.SetStateAction<any>>;
   setUnreadMessagesCount: React.Dispatch<React.SetStateAction<number>>;
+  onlineUsers?: any[]; // Массив онлайн пользователей из get_users/online_users
 }
 
 export default function MessagesModal({
@@ -67,6 +68,7 @@ export default function MessagesModal({
   readMessages,
   setMessagesData,
   setUnreadMessagesCount,
+  onlineUsers = [],
 }: MessagesModalProps) {
   const messagesSheetStyle = useAnimatedStyle(() => {
     return {
@@ -89,8 +91,9 @@ export default function MessagesModal({
     }
   };
 
-  // Функция для получения актуального пользователя из messagesUsers
+  // Функция для получения актуального пользователя из messagesUsers или onlineUsers
   // messagesUsers содержит данные из get_messages.users[id] - это актуальная информация о пользователе
+  // onlineUsers содержит данные из get_users/online_users - пользователи которые онлайн
   const getActualUser = () => {
     if (!selectedChatUser) return null;
     
@@ -102,8 +105,28 @@ export default function MessagesModal({
     });
     
     // Если пользователь найден в messagesUsers, используем его данные (актуальные из get_messages)
+    if (userId && messagesUsers[userId]) {
+      return messagesUsers[userId];
+    }
+    
+    // Если пользователя нет в messagesUsers, проверяем onlineUsers
+    // Если пользователь есть в onlineUsers, значит он онлайн
+    const onlineUser = onlineUsers.find((u: any) => {
+      const uId = u.id || u.user_id;
+      return uId === selectedChatUser.id || String(uId) === String(selectedChatUser.id);
+    });
+    
+    if (onlineUser) {
+      // Пользователь онлайн, используем данные из onlineUsers и помечаем как онлайн
+      return {
+        ...selectedChatUser,
+        ...onlineUser,
+        is_online: 1, // Помечаем как онлайн, так как он есть в onlineUsers
+      };
+    }
+    
     // Иначе используем selectedChatUser как fallback
-    return userId && messagesUsers[userId] ? messagesUsers[userId] : selectedChatUser;
+    return selectedChatUser;
   };
 
   // Функция для открытия чата с пользователем и пометки сообщений как прочитанных
@@ -202,9 +225,14 @@ export default function MessagesModal({
                       onPress={() => onSetShowUserInfo(true)}
                     >
                       {(() => {
-                        // Используем актуальные данные из messagesUsers (get_messages.users[id])
+                        // Используем актуальные данные из messagesUsers или onlineUsers
                         const actualUser = getActualUser();
-                        const isOnline = actualUser?.is_online === 1;
+                        // Если is_online === 1 или пользователь найден в onlineUsers, значит онлайн
+                        const isOnline = actualUser?.is_online === 1 || 
+                          (onlineUsers.some((u: any) => {
+                            const uId = u.id || u.user_id;
+                            return uId === actualUser?.id || String(uId) === String(actualUser?.id);
+                          }));
                         
                         return actualUser?.image ? (
                           <Image
@@ -245,9 +273,14 @@ export default function MessagesModal({
                 showUserInfo ? (
                   <ScrollView style={styles.userInfoContainer} contentContainerStyle={styles.userInfoContent}>
                     {(() => {
-                      // Используем актуальные данные из messagesUsers (get_messages.users[id])
+                      // Используем актуальные данные из messagesUsers или onlineUsers
                       const actualUser = getActualUser();
-                      const isOnline = actualUser?.is_online === 1;
+                      // Если is_online === 1 или пользователь найден в onlineUsers, значит онлайн
+                      const isOnline = actualUser?.is_online === 1 || 
+                        (onlineUsers.some((u: any) => {
+                          const uId = u.id || u.user_id;
+                          return uId === actualUser?.id || String(uId) === String(actualUser?.id);
+                        }));
                       
                       return (
                         <>
@@ -458,6 +491,13 @@ export default function MessagesModal({
                     ) : (
                       Object.keys(messagesUsers).map((userId) => {
                         const user = messagesUsers[userId];
+                        // Проверяем онлайн статус: либо is_online === 1, либо пользователь есть в onlineUsers
+                        const isOnline = user?.is_online === 1 || 
+                          (onlineUsers.some((u: any) => {
+                            const uId = u.id || u.user_id;
+                            return uId === user?.id || String(uId) === String(user?.id) || String(uId) === String(userId);
+                          }));
+                        
                         return (
                             <Pressable
                               key={userId}
@@ -470,7 +510,7 @@ export default function MessagesModal({
                                   source={{ uri: getImageUrl(user.image) || '' }}
                                   style={[
                                     styles.messageUserAvatar,
-                                    { borderColor: user?.is_online === 1 ? '#4ECDC4' : '#FF6B6B' }
+                                    { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
                                   ]}
                                   contentFit="cover"
                                 />
@@ -478,7 +518,7 @@ export default function MessagesModal({
                                 <View style={[
                                   styles.messageUserAvatar,
                                   styles.messageUserAvatarPlaceholder,
-                                  { borderColor: user?.is_online === 1 ? '#4ECDC4' : '#FF6B6B' }
+                                  { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
                                 ]}>
                                   <View style={styles.messageUserAvatarInner} />
                                 </View>
@@ -486,7 +526,7 @@ export default function MessagesModal({
                               {getUnreadCountForUser(userId) > 0 && (
                                 <View style={[
                                   styles.messageUserBadge,
-                                  { backgroundColor: user?.is_online === 1 ? '#4ECDC4' : '#FF6B6B' }
+                                  { backgroundColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
                                 ]}>
                                   <Text style={styles.messageUserBadgeText}>
                                     {getUnreadCountForUser(userId) > 99 ? '99+' : getUnreadCountForUser(userId)}

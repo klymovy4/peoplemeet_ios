@@ -323,6 +323,34 @@ export default function MapScreen() {
   const userLat = parseCoordinate(userData?.lat);
   const userLng = parseCoordinate(userData?.lng);
 
+  // Функция для генерации уникального цвета на основе имени, возраста и пола пользователя
+  const getUserMarkerColor = (user: any): string => {
+    // Собираем данные для генерации цвета
+    const name = user?.name || '';
+    const age = user?.age || 0;
+    const sex = user?.sex || '';
+    
+    // Создаем строку из всех данных
+    const dataString = `${name}-${age}-${sex}`;
+    
+    // Простая hash-функция для преобразования строки в число
+    let hash = 0;
+    for (let i = 0; i < dataString.length; i++) {
+      const char = dataString.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    
+    // Используем hash для генерации RGB компонентов
+    // Используем разные диапазоны для более ярких и насыщенных цветов
+    const r = Math.abs(hash) % 156 + 100; // 100-255 (яркие красные)
+    const g = Math.abs(hash * 7) % 156 + 100; // 100-255 (яркие зеленые)
+    const b = Math.abs(hash * 13) % 156 + 100; // 100-255 (яркие синие)
+    
+    // Возвращаем цвет в формате hex
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  };
+
   // Вычисляем расстояние до пользователя
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): string => {
     const EARTH_RADIUS = 6378137; // Radius of the Earth in meters
@@ -783,6 +811,9 @@ export default function MapScreen() {
                     return mergedUser;
                   })();
                   
+                  // Генерируем уникальный цвет для маркера на основе данных пользователя
+                  const markerColor = getUserMarkerColor(actualUser);
+                  
                   return (
                       <Marker
                           key={userId}
@@ -797,11 +828,11 @@ export default function MapScreen() {
                               {actualUser.image ? (
                                   <Image
                                       source={{ uri: getImageUrl(actualUser.image) || '' }}
-                                      style={styles.otherUserMarkerAvatar}
+                                      style={[styles.otherUserMarkerAvatar, { borderColor: markerColor }]}
                                       contentFit="cover"
                                   />
                               ) : (
-                                  <View style={[styles.otherUserMarkerAvatar, styles.markerAvatarPlaceholder]}>
+                                  <View style={[styles.otherUserMarkerAvatar, styles.markerAvatarPlaceholder, { borderColor: markerColor }]}>
                                       <View style={styles.markerAvatarInner} />
                                   </View>
                               )}
@@ -948,6 +979,7 @@ export default function MapScreen() {
           readMessages={readMessages}
           setMessagesData={setMessagesData}
           setUnreadMessagesCount={setUnreadMessagesCount}
+          onlineUsers={onlineUsers}
         />
       </View>
   );
@@ -1052,8 +1084,8 @@ const styles = StyleSheet.create({
     width: 45,
     height: 45,
     borderRadius: 22.5,
-    borderWidth: 2,
-    borderColor: '#FF6B6B',
+    borderWidth: 3, // Увеличено для лучшей видимости уникального цвета
+    borderColor: '#FF6B6B', // Дефолтный цвет, будет перезаписан динамически
     backgroundColor: '#fff',
   },
   messageButton: {
