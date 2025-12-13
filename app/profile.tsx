@@ -1,6 +1,6 @@
 import { getToken, removeToken, saveUserData } from '@/services/auth';
 import { getSelf, uploadAvatar, editProfile, getOnline, readMessages, sendMessage } from '@/services/api';
-import { enableUsersOnlinePolling, disableUsersOnlinePolling } from '@/services/usersOnlineInterval';
+import { enableUsersOnlinePolling, disableUsersOnlinePolling, setUsersOnlineCallback } from '@/services/usersOnlineInterval';
 import { startMessagesInterval, stopMessagesInterval, setMessagesCallback } from '@/services/messagesInterval';
 import { playMessageSound } from '@/services/soundService';
 import { Image } from 'expo-image';
@@ -34,6 +34,7 @@ export default function ProfileScreen() {
   const [description, setDescription] = useState('');
   const [thoughts, setThoughts] = useState('');
   const [messagesVisible, setMessagesVisible] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [messagesUsers, setMessagesUsers] = useState<any>({});
   const [messagesData, setMessagesData] = useState<any>({});
@@ -45,11 +46,55 @@ export default function ProfileScreen() {
   const scrollViewRef = useRef<ScrollView | null>(null);
   const lastMessageCountRef = useRef<number>(0); // Храним количество сообщений для проверки новых
   const previousUnreadCountRef = useRef<number>(0); // Храним предыдущее количество непрочитанных сообщений
+  const userIdRef = useRef<number | null>(null);
   
 
 
   useEffect(() => {
     checkAuth();
+  }, []);
+
+  useEffect(() => {
+    // Обновляем ref при изменении userData
+    if (userData?.id) {
+      userIdRef.current = userData.id;
+    }
+  }, [userData?.id]);
+
+  useEffect(() => {
+    // Устанавливаем callback для получения онлайн пользователей
+    setUsersOnlineCallback((users) => {
+      const currentUserId = userIdRef.current;
+      
+      if (!users) {
+        setOnlineUsers([]);
+        return;
+      }
+      
+      let usersArray: any[] = [];
+      
+      // Обрабатываем разные форматы ответа
+      if (Array.isArray(users)) {
+        usersArray = users;
+      } else if (users.users && Array.isArray(users.users)) {
+        usersArray = users.users;
+      } else if (users.data && Array.isArray(users.data)) {
+        usersArray = users.data;
+      }
+      
+      // Фильтруем текущего пользователя из списка
+      const filteredUsers = usersArray.filter((user: any) => {
+        const userId = user.id || user.user_id;
+        return userId !== currentUserId;
+      });
+      
+      setOnlineUsers(filteredUsers);
+    });
+
+    // Очищаем callback при размонтировании
+    return () => {
+      setUsersOnlineCallback(null);
+    };
   }, []);
 
   useEffect(() => {
@@ -807,26 +852,6 @@ export default function ProfileScreen() {
     }
   };
 
-  const formatDate = (dateString: string | null | undefined) => {
-    if (!dateString) return 'Не указано';
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleString('ru-RU');
-    } catch {
-      return dateString;
-    }
-  };
-
-  const formatOnlineStatus = (isOnline: number | null | undefined) => {
-    if (isOnline === 1) return 'Онлайн';
-    return 'Офлайн';
-  };
-
-  const formatSex = (sex: string | null | undefined) => {
-    if (!sex) return 'Не указано';
-    return sex === 'male' ? 'Мужской' : sex === 'female' ? 'Женский' : sex;
-  };
-
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -1140,6 +1165,7 @@ export default function ProfileScreen() {
         readMessages={readMessages}
         setMessagesData={setMessagesData}
         setUnreadMessagesCount={setUnreadMessagesCount}
+        onlineUsers={onlineUsers}
       />
     </View>
   );
@@ -1149,6 +1175,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+    borderWidth: 3,
+    borderColor: 'red'
   },
   loadingContainer: {
     flex: 1,

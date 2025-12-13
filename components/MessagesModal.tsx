@@ -451,14 +451,6 @@ export default function MessagesModal({
                               </View>
                             )}
                             
-                            {actualUser?.thoughts && (
-                              <View style={styles.userInfoThoughtsContainer}>
-                                <Text style={styles.userInfoThoughts}>
-                                  {actualUser.thoughts}
-                                </Text>
-                              </View>
-                            )}
-                            
                             {(() => {
                               // Проверяем, есть ли сообщения у этого пользователя
                               const targetUserId = actualUser?.id || selectedChatUser?.id;
@@ -604,7 +596,16 @@ export default function MessagesModal({
                             const uId = u.id || u.user_id;
                             return uId === user?.id || String(uId) === String(user?.id) || String(uId) === String(userId);
                           }));
-                        console.log(user)
+                        
+                        // Ищем пользователя в onlineUsers для получения thoughts
+                        const onlineUser = onlineUsers.find((u: any) => {
+                          const uId = u.id || u.user_id;
+                          return uId === user?.id || String(uId) === String(user?.id) || String(uId) === String(userId);
+                        });
+                        
+                        // Используем thoughts из onlineUsers, если пользователь онлайн и поле есть
+                        const thoughts = (isOnline && onlineUser?.thoughts) ? onlineUser.thoughts : null;
+                        
                         return (
                             <Pressable
                               key={userId}
@@ -641,9 +642,16 @@ export default function MessagesModal({
                                 </View>
                               )}
                             </View>
-                            <Text style={styles.messageUserName}>
-                             {user?.name || `user ${user?.id}`}
-                            </Text>
+                            <View style={styles.messageUserInfoContainer}>
+                              <Text style={styles.messageUserName}>
+                                {user?.name || `user ${user?.id}`}
+                              </Text>
+                              {thoughts && (
+                                <Text style={styles.messageUserThoughts} numberOfLines={1}>
+                                  {thoughts}
+                                </Text>
+                              )}
+                            </View>
                           </Pressable>
                         );
                       })
@@ -805,6 +813,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
+  },
+  messageUserInfoContainer: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  messageUserThoughts: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   chatMessage: {
     marginBottom: 12,
