@@ -7,8 +7,7 @@ import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View, Text, Modal, TouchableWithoutFeedback, ScrollView, TextInput, Alert } from 'react-native';
-import Toast from 'react-native-toast-message';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring } from 'react-native-reanimated';
+import { useSharedValue, withSpring } from 'react-native-reanimated';
 import { Marker, PROVIDER_DEFAULT, MapView as RNMapView } from 'react-native-maps';
 import MapView from 'react-native-map-clustering';
 import MessagesModal from '@/components/MessagesModal';
@@ -33,7 +32,7 @@ export default function MapScreen() {
   const lastMessageCountRef = useRef<number>(0); // Храним количество сообщений для проверки новых
   const previousUnreadCountRef = useRef<number>(0); // Храним предыдущее количество непрочитанных сообщений
   const previousMessagesRef = useRef<any>({}); // Храним предыдущие сообщения для определения новых
-  const mapViewRef = useRef<MapView>(null);
+  const mapViewRef = useRef<RNMapView>(null);
   const params = useLocalSearchParams();
 
   useEffect(() => {
@@ -975,6 +974,7 @@ export default function MapScreen() {
   );
 }
 
+// @ts-expect-error - TypeScript has issues with StyleSheet types when using react-native-map-clustering
 const styles = StyleSheet.create({
   container: {
     flex: 1,
