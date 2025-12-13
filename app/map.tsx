@@ -9,7 +9,8 @@ import { useEffect, useState, useRef } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View, Text, Modal, TouchableWithoutFeedback, ScrollView, TextInput, Alert } from 'react-native';
 import Toast from 'react-native-toast-message';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring } from 'react-native-reanimated';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import { Marker, PROVIDER_DEFAULT, MapView as RNMapView } from 'react-native-maps';
+import MapView from 'react-native-map-clustering';
 import MessagesModal from '@/components/MessagesModal';
 
 export default function MapScreen() {
@@ -84,9 +85,9 @@ export default function MapScreen() {
         return userId !== currentUserId;
       });
       
-      console.log('MapScreen: Filtered online users:', filteredUsers.length);
-      console.log('MapScreen: Users data:', filteredUsers.map(u => ({ id: u.id || u.user_id, name: u.name, lat: u.lat, lng: u.lng })));
-      
+      // console.log('MapScreen: Filtered online users:', filteredUsers.length);
+      // console.log('MapScreen: Users data:', filteredUsers.map(u => ({ id: u.id || u.user_id, name: u.name, lat: u.lat, lng: u.lng })));
+
       // Всегда обновляем состояние, даже если количество не изменилось
       // Это гарантирует актуальность координат и других данных
       setOnlineUsers(filteredUsers);
@@ -373,6 +374,52 @@ export default function MapScreen() {
 
   const handleMarkerPress = (user: any) => {
     setSelectedUser(user);
+  };
+
+  // Функция для рендеринга кластера
+  const renderCluster = (cluster: any) => {
+    const { id, geometry, properties } = cluster;
+    const { cluster_id, point_count } = properties;
+    
+    return (
+      <Marker
+        key={`cluster-${cluster_id}`}
+        coordinate={{
+          latitude: geometry.coordinates[1],
+          longitude: geometry.coordinates[0],
+        }}
+        onPress={() => {
+          // При нажатии на кластер приближаемся максимально, чтобы увидеть отдельные маркеры
+          // Используем очень маленькие delta для максимального приближения
+          const region = {
+            latitude: geometry.coordinates[1],
+            longitude: geometry.coordinates[0],
+            latitudeDelta: 0.0002, // Максимальное приближение
+            longitudeDelta: 0.0002, // Максимальное приближение
+          };
+          
+          // Сначала быстро приближаемся
+          mapViewRef.current?.animateToRegion(region, 400);
+          
+          // Затем еще больше приближаемся для гарантированного раскрытия кластера
+          setTimeout(() => {
+            const tighterRegion = {
+              latitude: geometry.coordinates[1],
+              longitude: geometry.coordinates[0],
+              latitudeDelta: 0.0001,
+              longitudeDelta: 0.0001,
+            };
+            mapViewRef.current?.animateToRegion(tighterRegion, 400);
+          }, 500);
+        }}
+      >
+        <View style={styles.clusterContainer}>
+          <View style={styles.clusterMarker}>
+            <Text style={styles.clusterText}>{point_count}</Text>
+          </View>
+        </View>
+      </Marker>
+    );
   };
 
   const handleCloseUserCard = () => {
@@ -681,6 +728,16 @@ export default function MapScreen() {
                   }}
                   showsUserLocation={false}
                   showsMyLocationButton={false}
+                  radius={20}
+                  extent={512}
+                  minZoom={10}
+                  maxZoom={20}
+                  minPoints={2}
+                  edgePadding={{ top: 50, left: 50, bottom: 50, right: 50 }}
+                  renderCluster={renderCluster}
+                  clusterColor="#4ECDC4"
+                  clusterTextColor="#fff"
+                  clusterFontFamily="System"
               >
                 <Marker
                     coordinate={{
@@ -688,6 +745,7 @@ export default function MapScreen() {
                       longitude: userLng,
                     }}
                     onPress={() => handleMarkerPress(userData)}
+                    tracksViewChanges={false}
                 >
                   <View style={styles.markerContainer}>
                     {userData?.image ? (
@@ -759,6 +817,7 @@ export default function MapScreen() {
                             longitude: userLng,
                           }}
                           onPress={() => handleMarkerPress(actualUser)}
+                          tracksViewChanges={false}
                       >
                           <View style={styles.markerContainer}>
                               {actualUser.image ? (
@@ -1022,6 +1081,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#333',
     maxWidth: 150,
+    width: 'fit-content',
     minWidth: 150,
     height: 'auto',
     textAlign: 'left',
@@ -1042,6 +1102,33 @@ const styles = StyleSheet.create({
     elevation: 5,
     borderWidth: 1,
     borderColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  clusterContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clusterMarker: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#4ECDC4',
+    borderWidth: 3,
+    borderColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  clusterText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   messageButton: {
     width: 50,
