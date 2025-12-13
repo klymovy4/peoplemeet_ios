@@ -1341,7 +1341,7 @@ export default function ProfileScreen() {
                               
                               {actualUser?.description && (
                                 <View style={styles.userInfoDescriptionContainer}>
-                                  <Text style={styles.userInfoDescriptionLabel}>Описание:</Text>
+                                  <Text style={styles.userInfoDescriptionLabel}>Описание:2</Text>
                                   <Text style={styles.userInfoDescription}>
                                     {actualUser.description}
                                   </Text>
@@ -2084,10 +2084,7 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   userInfoDescriptionContainer: {
-    marginTop: 20,
     paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
   },
   userInfoDescriptionLabel: {
     fontSize: 16,
@@ -2102,10 +2099,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   userInfoThoughtsContainer: {
-    marginTop: 20,
     paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
   },
   userInfoThoughts: {
     fontSize: 16,

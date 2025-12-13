@@ -1650,9 +1650,6 @@ const styles = StyleSheet.create({
   },
   userInfoDescriptionContainer: {
     marginTop: 20,
-    paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
   },
   userInfoDescriptionLabel: {
     fontSize: 16,
@@ -1667,10 +1664,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   userInfoThoughtsContainer: {
-    marginTop: 20,
     paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
   },
   userInfoThoughts: {
     fontSize: 16,
