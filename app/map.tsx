@@ -2,6 +2,7 @@ import { getToken } from '@/services/auth';
 import { getSelf, readMessages, sendMessage } from '@/services/api';
 import { enableUsersOnlinePolling, disableUsersOnlinePolling, setUsersOnlineCallback } from '@/services/usersOnlineInterval';
 import { startMessagesInterval, setMessagesCallback } from '@/services/messagesInterval';
+import { playMessageSound } from '@/services/soundService';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
@@ -27,6 +28,7 @@ export default function MapScreen() {
   const userIdRef = useRef<number | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const lastMessageCountRef = useRef<number>(0); // Храним количество сообщений для проверки новых
+  const previousUnreadCountRef = useRef<number>(0); // Храним предыдущее количество непрочитанных сообщений
   const mapViewRef = useRef<MapView>(null);
   const params = useLocalSearchParams();
 
@@ -158,6 +160,14 @@ export default function MapScreen() {
         }
       });
       
+      // Воспроизводим звук, если появились новые непрочитанные сообщения
+      const previousUnreadCount = previousUnreadCountRef.current;
+      if (usersWithUnreadCount > previousUnreadCount && !messagesVisible) {
+        // Воспроизводим звук только если появились новые непрочитанные сообщения и чат не открыт
+        playMessageSound();
+      }
+      
+      previousUnreadCountRef.current = usersWithUnreadCount;
       setUnreadMessagesCount(usersWithUnreadCount);
       
       // Сохраняем данные о пользователях и сообщениях
@@ -1166,6 +1176,11 @@ const styles = StyleSheet.create({
   markerContainer: {
     alignItems: 'center',
     justifyContent: 'center',
+    // borderColor: '#4ECDC4',
+    // borderWidth: 3,
+    // backgroundColor: '#fff',
+    // borderRadius: 25,
+
   },
   markerAvatar: {
     width: 50,

@@ -2,6 +2,7 @@ import { getToken, removeToken, saveUserData } from '@/services/auth';
 import { getSelf, uploadAvatar, editProfile, getOnline, readMessages, sendMessage } from '@/services/api';
 import { enableUsersOnlinePolling, disableUsersOnlinePolling } from '@/services/usersOnlineInterval';
 import { startMessagesInterval, stopMessagesInterval, setMessagesCallback } from '@/services/messagesInterval';
+import { playMessageSound } from '@/services/soundService';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
@@ -42,6 +43,7 @@ export default function ProfileScreen() {
   const slideAnim = useSharedValue(1); // Начальное значение 1 = плашка скрыта внизу
   const scrollViewRef = useRef<ScrollView>(null);
   const lastMessageCountRef = useRef<number>(0); // Храним количество сообщений для проверки новых
+  const previousUnreadCountRef = useRef<number>(0); // Храним предыдущее количество непрочитанных сообщений
   
   // Анимированный стиль для плашки сообщений (должен быть на верхнем уровне)
   const messagesSheetStyle = useAnimatedStyle(() => {
@@ -87,6 +89,14 @@ export default function ProfileScreen() {
         }
       });
       
+      // Воспроизводим звук, если появились новые непрочитанные сообщения
+      const previousUnreadCount = previousUnreadCountRef.current;
+      if (usersWithUnreadCount > previousUnreadCount && !messagesVisible) {
+        // Воспроизводим звук только если появились новые непрочитанные сообщения и чат не открыт
+        playMessageSound();
+      }
+      
+      previousUnreadCountRef.current = usersWithUnreadCount;
       setUnreadMessagesCount(usersWithUnreadCount);
       
       // Сохраняем данные о пользователях и сообщениях
@@ -2115,4 +2125,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-
