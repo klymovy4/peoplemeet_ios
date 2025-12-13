@@ -13,6 +13,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import ImageCropModal from '@/components/ImageCropModal';
+import MessagesModal from '@/components/MessagesModal';
 // @ts-ignore - Picker может не иметь типов
 import { Picker } from '@react-native-picker/picker';
 
@@ -41,16 +42,10 @@ export default function ProfileScreen() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const [showUserInfo, setShowUserInfo] = useState(false);
   const slideAnim = useSharedValue(1); // Начальное значение 1 = плашка скрыта внизу
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<ScrollView | null>(null);
   const lastMessageCountRef = useRef<number>(0); // Храним количество сообщений для проверки новых
   const previousUnreadCountRef = useRef<number>(0); // Храним предыдущее количество непрочитанных сообщений
   
-  // Анимированный стиль для плашки сообщений (должен быть на верхнем уровне)
-  const messagesSheetStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateY: slideAnim.value * 600 }], // Увеличено для более высокого открытия
-    };
-  });
 
 
   useEffect(() => {
@@ -763,82 +758,20 @@ export default function ProfileScreen() {
     }
   };
 
-  // Функция для открытия чата с пользователем
-  const handleOpenChat = async (userId: string | number) => {
-    const user = messagesUsers[userId];
-    if (user) {
-      setSelectedChatUser(user);
-      setShowUserInfo(false); // Сбрасываем показ информации при открытии нового чата
-      
-      // Сбрасываем счетчик сообщений при открытии нового чата
-      lastMessageCountRef.current = 0;
-      
-      // Прокручиваем вниз при открытии чата
-      setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 300);
-      
-      // Отправляем запрос о прочтении сообщений
-      try {
-        const token = await getToken();
-        if (token && user.id) {
-          const result = await readMessages(token, user.id);
-          if (result.status === 'success') {
-            console.log('Messages marked as read for user:', user.id);
-            
-            // Обновляем локальное состояние сообщений, помечая их как прочитанные
-            setMessagesData((prevData: any) => {
-              const updatedData = { ...prevData };
-              const messages = updatedData.messages || {};
-              const userMessages = messages[userId] || [];
-              
-              // Помечаем все входящие сообщения от этого пользователя как прочитанные
-              if (Array.isArray(userMessages)) {
-                const userIdNum = typeof userId === 'string' ? parseInt(userId, 10) : userId;
-                userMessages.forEach((message) => {
-                  if (message && message.sender_id === userIdNum) {
-                    message.is_read = 1;
-                  }
-                });
-              }
-              
-              // Пересчитываем количество непрочитанных пользователей сразу
-              let usersWithUnreadCount = 0;
-              Object.keys(messages).forEach((uid) => {
-                const userMsgs = messages[uid] || [];
-                const uidNum = parseInt(uid, 10);
-                
-                if (Array.isArray(userMsgs)) {
-                  const hasUnread = userMsgs.some((message) => {
-                    return message && 
-                           message.sender_id === uidNum && 
-                           message.is_read === 0;
-                  });
-                  
-                  if (hasUnread) {
-                    usersWithUnreadCount++;
-                  }
-                }
-              });
-              
-              // Обновляем счетчик непрочитанных сразу
-              setUnreadMessagesCount(usersWithUnreadCount);
-              
-              return updatedData;
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Error marking messages as read:', error);
-      }
-    }
-  };
 
   // Функция для возврата к списку пользователей
   const handleBackToUsers = () => {
     setSelectedChatUser(null);
     // Сбрасываем счетчик сообщений при возврате к списку
     lastMessageCountRef.current = 0;
+  };
+
+  // Функция для показа пользователя на карте (переход на страницу карты)
+  const handleShowOnMap = (userId: number) => {
+    router.push({
+      pathname: '/map',
+      params: { focusUserId: String(userId) }
+    });
   };
 
   // Функция для форматирования времени из created_at
@@ -1176,336 +1109,38 @@ export default function ProfileScreen() {
       )}
 
       {/* Плашка сообщений снизу */}
-      <Modal
+      <MessagesModal
         visible={messagesVisible}
-        transparent={true}
-        animationType="none"
-        onRequestClose={() => {
-          slideAnim.value = withTiming(1, { duration: 300 });
-          setTimeout(() => setMessagesVisible(false), 300);
+        slideAnim={slideAnim}
+        messagesUsers={messagesUsers}
+        messagesData={messagesData}
+        selectedChatUser={selectedChatUser}
+        showUserInfo={showUserInfo}
+        messageText={messageText}
+        sendingMessage={sendingMessage}
+        userData={userData}
+        scrollViewRef={scrollViewRef}
+        lastMessageCountRef={lastMessageCountRef}
+        onClose={() => {
+          setSelectedChatUser(null);
+          setMessagesVisible(false);
         }}
-      >
-        <View style={styles.messagesBackdrop} pointerEvents="box-none">
-          <TouchableWithoutFeedback
-            onPress={() => {
-              slideAnim.value = withTiming(1, { duration: 300 });
-              setTimeout(() => setMessagesVisible(false), 300);
-            }}
-          >
-            <View style={StyleSheet.absoluteFill} />
-          </TouchableWithoutFeedback>
-          <View pointerEvents="box-none" style={{ flex: 1, justifyContent: 'flex-end' }}>
-            <Animated.View style={[styles.messagesSheet, messagesSheetStyle]} pointerEvents="auto">
-                <View style={styles.messagesSheetInner}>
-                <View style={styles.messagesHeader}>
-                  {selectedChatUser ? (
-                    <>
-                      <Pressable
-                        style={styles.messagesBackButton}
-                        onPress={() => {
-                          if (showUserInfo) {
-                            setShowUserInfo(false);
-                          } else {
-                            handleBackToUsers();
-                          }
-                        }}
-                      >
-                        <Text style={styles.messagesBackButtonText}>←</Text>
-                      </Pressable>
-                      <Pressable
-                        style={styles.messagesHeaderAvatarContainer}
-                        onPress={() => setShowUserInfo(true)}
-                      >
-                        {(() => {
-                          // Находим актуального пользователя из messagesUsers для получения актуального is_online
-                          const userId = Object.keys(messagesUsers).find(id => {
-                            const user = messagesUsers[id];
-                            return user?.id === selectedChatUser?.id || id === String(selectedChatUser?.id);
-                          });
-                          const actualUser = userId ? messagesUsers[userId] : selectedChatUser;
-                          const isOnline = actualUser?.is_online === 1;
-                          
-                          return selectedChatUser?.image ? (
-                            <Image
-                              source={{ uri: getImageUrl(selectedChatUser.image) || '' }}
-                              style={[
-                                styles.messagesHeaderAvatar,
-                                { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
-                              ]}
-                              contentFit="cover"
-                            />
-                          ) : (
-                            <View style={[
-                              styles.messagesHeaderAvatar,
-                              styles.messagesHeaderAvatarPlaceholder,
-                              { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
-                            ]}>
-                              <View style={styles.messagesHeaderAvatarInner} />
-                            </View>
-                          );
-                        })()}
-                      </Pressable>
-                      <Text style={styles.messagesTitle}>
-                        {selectedChatUser?.name || 'Пользователь'}
-                      </Text>
-                    </>
-                  ) : (
-                    <Text style={styles.messagesTitle}>Сообщения2</Text>
-                  )}
-                  <Pressable
-                    onPress={() => {
-                      setSelectedChatUser(null);
-                      slideAnim.value = withTiming(1, { duration: 300 });
-                      setTimeout(() => setMessagesVisible(false), 300);
-                    }}
-                  >
-                    <Text style={styles.messagesCloseButton}>✕</Text>
-                  </Pressable>
-                </View>
-                {selectedChatUser ? (
-                  showUserInfo ? (
-                    <ScrollView style={styles.userInfoContainer} contentContainerStyle={styles.userInfoContent}>
-                      {(() => {
-                        // Находим актуального пользователя из messagesUsers
-                        const userId = Object.keys(messagesUsers).find(id => {
-                          const user = messagesUsers[id];
-                          return user?.id === selectedChatUser?.id || id === String(selectedChatUser?.id);
-                        });
-                        const actualUser = userId ? messagesUsers[userId] : selectedChatUser;
-                        const isOnline = actualUser?.is_online === 1;
-                        
-                        return (
-                          <>
-                            <View style={styles.userInfoImageContainer}>
-                              {actualUser?.image ? (
-                                <Image
-                                  source={{ uri: getImageUrl(actualUser.image) || '' }}
-                                  style={[
-                                    styles.userInfoImage,
-                                    { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
-                                  ]}
-                                  contentFit="cover"
-                                />
-                              ) : (
-                                <View style={[
-                                  styles.userInfoImage,
-                                  styles.userInfoImagePlaceholder,
-                                  { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
-                                ]}>
-                                  <View style={styles.userInfoImageInner} />
-                                </View>
-                              )}
-                            </View>
-                            
-                            <View style={styles.userInfoDetails}>
-                              <Text style={styles.userInfoName}>
-                                {actualUser?.name || 'Имя не указано'}
-                              </Text>
-                              
-                              <View style={styles.userInfoRow}>
-                                <Text style={styles.userInfoLabel}>Возраст:</Text>
-                                <Text style={styles.userInfoValue}>{actualUser?.age || 'не указан'}</Text>
-                              </View>
-                              
-                              <View style={styles.userInfoRow}>
-                                <Text style={styles.userInfoLabel}>Пол:</Text>
-                                <Text style={styles.userInfoValue}>
-                                  {actualUser?.sex === 'male' ? 'Мужской' : actualUser?.sex === 'female' ? 'Женский' : actualUser?.sex || 'не указан'}
-                                </Text>
-                              </View>
-                              
-                              <View style={styles.userInfoRow}>
-                                <Text style={styles.userInfoLabel}>Статус:</Text>
-                                {isOnline ? (
-                                  <Pressable
-                                    style={styles.userInfoShowOnMapButton}
-                                    onPress={() => {
-                                      // Закрываем модальное окно сообщений
-                                      slideAnim.value = withTiming(1, { duration: 300 });
-                                      setTimeout(() => {
-                                        setMessagesVisible(false);
-                                        // Переходим на карту с параметром userId для фокуса на маркер
-                                        router.push({
-                                          pathname: '/map',
-                                          params: { focusUserId: String(actualUser?.id || selectedChatUser?.id) }
-                                        });
-                                      }, 300);
-                                    }}
-                                  >
-                                    <Text style={styles.userInfoShowOnMapButtonText}>Show on map</Text>
-                                  </Pressable>
-                                ) : (
-                                  <Text style={styles.userInfoValue}>Оффлайн</Text>
-                                )}
-                              </View>
-                              
-                              {actualUser?.description && (
-                                <View style={styles.userInfoDescriptionContainer}>
-                                  <Text style={styles.userInfoDescriptionLabel}>Описание:2</Text>
-                                  <Text style={styles.userInfoDescription}>
-                                    {actualUser.description}
-                                  </Text>
-                                </View>
-                              )}
-                              
-                              {actualUser?.thoughts && (
-                                <View style={styles.userInfoThoughtsContainer}>
-                                  <Text style={styles.userInfoThoughts}>
-                                    {actualUser.thoughts}
-                                  </Text>
-                                </View>
-                              )}
-                            </View>
-                          </>
-                        );
-                      })()}
-                    </ScrollView>
-                  ) : (
-                  <View style={styles.chatContainer}>
-                    <ScrollView 
-                      ref={scrollViewRef}
-                      style={styles.messagesContent}
-                      contentContainerStyle={styles.messagesContentContainer}
-                      onContentSizeChange={() => {
-                        scrollViewRef.current?.scrollToEnd({ animated: true });
-                      }}
-                      nestedScrollEnabled={true}
-                      showsVerticalScrollIndicator={true}
-                      scrollEnabled={true}
-                      bounces={true}
-                      alwaysBounceVertical={false}
-                      keyboardShouldPersistTaps="handled"
-                    >
-                      {(() => {
-                        // Находим userId по ключу в messagesUsers
-                        const userId = Object.keys(messagesUsers).find(id => {
-                          const user = messagesUsers[id];
-                          return user?.id === selectedChatUser.id || id === String(selectedChatUser.id);
-                        }) || selectedChatUser.id;
-                        const chatMessages = userId ? getMessagesForUser(userId) : [];
-                        
-                        return chatMessages.length === 0 ? (
-                          <Text style={styles.messagesEmptyText}>Нет сообщений</Text>
-                        ) : (
-                          chatMessages.map((message: any, index: number) => {
-                            const isFromCurrentUser = message.sender_id === userData?.id;
-                            return (
-                              <View
-                                key={message.id || index}
-                                style={[
-                                  styles.chatMessage,
-                                  isFromCurrentUser ? styles.chatMessageSent : styles.chatMessageReceived
-                                ]}
-                              >
-                                <Text style={[
-                                  styles.chatMessageText,
-                                  isFromCurrentUser ? styles.chatMessageTextSent : styles.chatMessageTextReceived
-                                ]}>
-                                  {message.message_text || ''}
-                                </Text>
-                                <Text style={[
-                                  styles.chatMessageTime,
-                                  isFromCurrentUser ? styles.chatMessageTimeSent : styles.chatMessageTimeReceived
-                                ]}>
-                                  {formatMessageTime(message.created_at)}
-                                </Text>
-                              </View>
-                            );
-                          })
-                        );
-                      })()}
-                    </ScrollView>
-                    <View style={styles.chatInputContainer}>
-                      <TextInput
-                        style={styles.chatInput}
-                        value={messageText}
-                        onChangeText={setMessageText}
-                        placeholder="Введите сообщение..."
-                        placeholderTextColor="#999"
-                        multiline
-                        onSubmitEditing={handleSendMessage}
-                      />
-                      <Pressable
-                        style={[styles.chatSendButton, (!messageText.trim() || sendingMessage) && styles.chatSendButtonDisabled]}
-                        onPress={handleSendMessage}
-                        disabled={!messageText.trim() || sendingMessage}
-                      >
-                        {sendingMessage ? (
-                          <ActivityIndicator size="small" color="#fff" />
-                        ) : (
-                          <Text style={styles.chatSendButtonText}>Отправить</Text>
-                        )}
-                      </Pressable>
-                    </View>
-                  </View>
-                  )
-                ) : (
-                    <View style={styles.messagesUsersContainer}>
-                      <ScrollView 
-                        style={styles.messagesContent}
-                        contentContainerStyle={styles.messagesUsersContentContainer}
-                        nestedScrollEnabled={true}
-                        showsVerticalScrollIndicator={true}
-                        scrollEnabled={true}
-                        bounces={true}
-                        keyboardShouldPersistTaps="handled"
-                      >
-                        {Object.keys(messagesUsers).length === 0 ? (
-                        <Text style={styles.messagesEmptyText}>Здесь будут ваши сообщения</Text>
-                      ) : (
-                        Object.keys(messagesUsers).map((userId) => {
-                          const user = messagesUsers[userId];
-                          return (
-                            <Pressable
-                              key={userId}
-                              style={styles.messageUserItem}
-                              onPress={() => handleOpenChat(userId)}
-                            >
-                              <View style={styles.messageUserAvatarContainer}>
-                                {user?.image ? (
-                                  <Image
-                                    source={{ uri: getImageUrl(user.image) || '' }}
-                                    style={[
-                                      styles.messageUserAvatar,
-                                      { borderColor: user?.is_online === 1 ? '#4ECDC4' : '#FF6B6B' }
-                                    ]}
-                                    contentFit="cover"
-                                  />
-                                ) : (
-                                  <View style={[
-                                    styles.messageUserAvatar,
-                                    styles.messageUserAvatarPlaceholder,
-                                    { borderColor: user?.is_online === 1 ? '#4ECDC4' : '#FF6B6B' }
-                                  ]}>
-                                    <View style={styles.messageUserAvatarInner} />
-                                  </View>
-                                )}
-                                {getUnreadCountForUser(userId) > 0 && (
-                                  <View style={[
-                                    styles.messageUserBadge,
-                                    { backgroundColor: user?.is_online === 1 ? '#4ECDC4' : '#FF6B6B' }
-                                  ]}>
-                                    <Text style={styles.messageUserBadgeText}>
-                                      {getUnreadCountForUser(userId) > 99 ? '99+' : getUnreadCountForUser(userId)}
-                                    </Text>
-                                  </View>
-                                )}
-                              </View>
-                              <Text style={styles.messageUserName}>
-                                {user?.name || 'Пользователь'}
-                              </Text>
-                            </Pressable>
-                          );
-                          })
-                        )}
-                      </ScrollView>
-                    </View>
-                  )}
-              </View>
-            </Animated.View>
-          </View>
-        </View>
-      </Modal>
+        onBackToUsers={handleBackToUsers}
+        onSetShowUserInfo={setShowUserInfo}
+        onSetSelectedChatUser={setSelectedChatUser}
+        onSetMessageText={setMessageText}
+        onSendMessage={handleSendMessage}
+        onShowOnMap={handleShowOnMap}
+        getImageUrl={getImageUrl}
+        getUnreadCountForUser={getUnreadCountForUser}
+        getMessagesForUser={getMessagesForUser}
+        formatMessageTime={formatMessageTime}
+        title="Сообщения"
+        getToken={getToken}
+        readMessages={readMessages}
+        setMessagesData={setMessagesData}
+        setUnreadMessagesCount={setUnreadMessagesCount}
+      />
     </View>
   );
 }

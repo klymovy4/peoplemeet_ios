@@ -10,6 +10,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View, Text, Modal, TouchableW
 import Toast from 'react-native-toast-message';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring } from 'react-native-reanimated';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import MessagesModal from '@/components/MessagesModal';
 
 export default function MapScreen() {
   const [userData, setUserData] = useState<any>(null);
@@ -28,18 +29,12 @@ export default function MapScreen() {
   const slideAnim = useSharedValue(1); // Начальное значение 1 = плашка скрыта внизу
   const avatarAnim = useSharedValue({ x: 0, y: 0, scale: 1 });
   const userIdRef = useRef<number | null>(null);
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<ScrollView | null>(null);
   const lastMessageCountRef = useRef<number>(0); // Храним количество сообщений для проверки новых
   const previousUnreadCountRef = useRef<number>(0); // Храним предыдущее количество непрочитанных сообщений
+  const previousMessagesRef = useRef<any>({}); // Храним предыдущие сообщения для определения новых
   const mapViewRef = useRef<MapView>(null);
   const params = useLocalSearchParams();
-
-  // Анимированный стиль для плашки сообщений (должен быть на верхнем уровне)
-  const messagesSheetStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateY: slideAnim.value * 600 }], // Увеличено с 400 до 500 для более высокого открытия
-    };
-  });
 
   useEffect(() => {
     checkAuth();
@@ -144,11 +139,14 @@ export default function MapScreen() {
       
       // Подсчитываем количество пользователей с непрочитанными сообщениями
       const messages = messagesData.messages || {};
+      const previousMessages = previousMessagesRef.current || {};
       let usersWithUnreadCount = 0;
+      let shouldPlaySound = false;
       
       Object.keys(messages).forEach((userId) => {
         const userMessages = messages[userId] || [];
         const userIdNum = parseInt(userId, 10);
+        const previousUserMessages = previousMessages[userId] || [];
         
         // Проверяем, есть ли хотя бы одно входящее непрочитанное сообщение (sender_id === userId и is_read: 0)
         const hasUnread = Array.isArray(userMessages) && userMessages.some((message) => {
@@ -160,15 +158,42 @@ export default function MapScreen() {
         if (hasUnread) {
           usersWithUnreadCount++;
         }
+        
+        // Проверяем, есть ли новые непрочитанные сообщения от этого пользователя
+        if (Array.isArray(userMessages) && Array.isArray(previousUserMessages)) {
+          // Находим новые непрочитанные сообщения (is_read: 0 и sender_id === userIdNum)
+          const newUnreadMessages = userMessages.filter((message) => {
+            if (!message || message.sender_id !== userIdNum || message.is_read !== 0) {
+              return false;
+            }
+            
+            // Проверяем, что это сообщение не было в предыдущих сообщениях
+            const messageExists = previousUserMessages.some((prevMessage) => {
+              return prevMessage && prevMessage.id === message.id;
+            });
+            
+            return !messageExists;
+          });
+          
+          // Если есть новые непрочитанные сообщения и диалог с этим пользователем не открыт
+          if (newUnreadMessages.length > 0) {
+            const isDialogOpen = messagesVisible && selectedChatUser && 
+              (selectedChatUser.id === userIdNum || String(selectedChatUser.id) === userId);
+            
+            if (!isDialogOpen) {
+              shouldPlaySound = true;
+            }
+          }
+        }
       });
       
-      // Воспроизводим звук, если появились новые непрочитанные сообщения
-      const previousUnreadCount = previousUnreadCountRef.current;
-      if (usersWithUnreadCount > previousUnreadCount && !messagesVisible) {
-        // Воспроизводим звук только если появились новые непрочитанные сообщения и чат не открыт
+      // Воспроизводим звук, если есть новые непрочитанные сообщения и диалог не открыт
+      if (shouldPlaySound) {
         playMessageSound();
       }
       
+      // Сохраняем текущие сообщения для следующей проверки
+      previousMessagesRef.current = messages;
       previousUnreadCountRef.current = usersWithUnreadCount;
       setUnreadMessagesCount(usersWithUnreadCount);
       
@@ -327,6 +352,75 @@ export default function MapScreen() {
     setSelectedUser(null);
   };
 
+  // Обновляем selectedUser актуальными данными из onlineUsers и messagesUsers при их изменении
+  useEffect(() => {
+    if (selectedUser) {
+      const userId = selectedUser.id || selectedUser.user_id;
+      if (userId) {
+        // Сначала ищем пользователя в onlineUsers (они содержат актуальные данные)
+        const onlineUser = onlineUsers.find((u: any) => {
+          const uId = u.id || u.user_id;
+          return uId === userId || String(uId) === String(userId);
+        });
+        
+        // Затем ищем в messagesUsers для дополнения данными
+        const userIdKey = Object.keys(messagesUsers).find(id => {
+          const msgUser = messagesUsers[id];
+          return msgUser && (msgUser.id === userId || String(msgUser.id) === String(userId) || id === String(userId));
+        });
+        
+        let updatedUser = { ...selectedUser };
+        let hasChanges = false;
+        
+        // Если пользователь найден в onlineUsers, обновляем данными оттуда
+        if (onlineUser) {
+          // Проверяем изменения в важных полях
+          const fieldsToCheck = ['image', 'name', 'age', 'sex', 'description', 'thoughts', 'is_online', 'lat', 'lng'];
+          for (const field of fieldsToCheck) {
+            if (onlineUser[field] !== selectedUser[field]) {
+              hasChanges = true;
+              break;
+            }
+          }
+          
+          if (hasChanges) {
+            updatedUser = {
+              ...updatedUser,
+              ...onlineUser, // Обновляем данными из onlineUsers
+              id: userId, // Сохраняем id
+            };
+          }
+        }
+        
+        // Если пользователь найден в messagesUsers, дополняем/перезаписываем данными
+        if (userIdKey && messagesUsers[userIdKey]) {
+          const msgUser = messagesUsers[userIdKey];
+          const fieldsToCheck = ['image', 'name', 'age', 'sex', 'description', 'thoughts', 'is_online'];
+          for (const field of fieldsToCheck) {
+            if (msgUser[field] !== updatedUser[field]) {
+              hasChanges = true;
+              break;
+            }
+          }
+          
+          if (hasChanges) {
+            updatedUser = {
+              ...updatedUser,
+              ...msgUser, // Дополняем данными из messagesUsers
+              lat: updatedUser.lat || selectedUser.lat, // Сохраняем координаты
+              lng: updatedUser.lng || selectedUser.lng,
+              id: userId, // Сохраняем id
+            };
+          }
+        }
+        
+        if (hasChanges) {
+          setSelectedUser(updatedUser);
+        }
+      }
+    }
+  }, [onlineUsers, messagesUsers]);
+
   // Функция для форматирования времени из created_at
   const formatMessageTime = (createdAt: string | null | undefined): string => {
     if (!createdAt) return '';
@@ -363,18 +457,28 @@ export default function MapScreen() {
   const handleWrite = () => {
     if (!selectedUser?.id) return;
     
-    // Ищем пользователя в messagesUsers по id
-    const userId = String(selectedUser.id);
-    let chatUser = messagesUsers[userId];
+    // Ищем пользователя в messagesUsers по id (может быть разный формат ключа)
+    const userId = Object.keys(messagesUsers).find(id => {
+      const user = messagesUsers[id];
+      return user && (user.id === selectedUser.id || 
+                      String(user.id) === String(selectedUser.id) || 
+                      id === String(selectedUser.id));
+    });
     
-    // Если пользователя нет в messagesUsers, создаем объект на основе selectedUser
-    if (!chatUser) {
+    let chatUser;
+    
+    if (userId && messagesUsers[userId]) {
+      // Если пользователь найден в messagesUsers, используем его данные (актуальные из get_messages)
+      // Но дополняем координатами из selectedUser если они есть
       chatUser = {
-        id: selectedUser.id,
-        name: selectedUser.name,
-        image: selectedUser.image,
-        is_online: selectedUser.is_online || 0,
+        ...messagesUsers[userId],
+        lat: selectedUser.lat,
+        lng: selectedUser.lng,
       };
+    } else {
+      // Если пользователя нет в messagesUsers, используем все данные из selectedUser
+      // selectedUser содержит актуальные данные из onlineUsers (age, description, name, sex, thoughts и т.д.)
+      chatUser = { ...selectedUser };
     }
     
     // Устанавливаем пользователя для диалога
@@ -524,76 +628,31 @@ export default function MapScreen() {
   };
 
   // Функция для открытия чата с пользователем
-  const handleOpenChat = async (userId: string | number) => {
-    const user = messagesUsers[userId];
-    if (user) {
-      setSelectedChatUser(user);
-      setShowUserInfo(false); // Сбрасываем показ информации при открытии нового чата
-      
-      // Сбрасываем счетчик сообщений при открытии нового чата
-      lastMessageCountRef.current = 0;
-      
-      // Отправляем запрос о прочтении сообщений
-      try {
-        const token = await getToken();
-        if (token && user.id) {
-          const result = await readMessages(token, user.id);
-          if (result.status === 'success') {
-            console.log('Messages marked as read for user:', user.id);
-            
-            // Обновляем локальное состояние сообщений, помечая их как прочитанные
-            setMessagesData((prevData: any) => {
-              const updatedData = { ...prevData };
-              const messages = updatedData.messages || {};
-              const userMessages = messages[userId] || [];
-              
-              // Помечаем все входящие сообщения от этого пользователя как прочитанные
-              if (Array.isArray(userMessages)) {
-                const userIdNum = typeof userId === 'string' ? parseInt(userId, 10) : userId;
-                userMessages.forEach((message) => {
-                  if (message && message.sender_id === userIdNum) {
-                    message.is_read = 1;
-                  }
-                });
-              }
-              
-              // Пересчитываем количество непрочитанных пользователей сразу
-              let usersWithUnreadCount = 0;
-              Object.keys(messages).forEach((uid) => {
-                const userMsgs = messages[uid] || [];
-                const uidNum = parseInt(uid, 10);
-                
-                if (Array.isArray(userMsgs)) {
-                  const hasUnread = userMsgs.some((message) => {
-                    return message && 
-                           message.sender_id === uidNum && 
-                           message.is_read === 0;
-                  });
-                  
-                  if (hasUnread) {
-                    usersWithUnreadCount++;
-                  }
-                }
-              });
-              
-              // Обновляем счетчик непрочитанных сразу
-              setUnreadMessagesCount(usersWithUnreadCount);
-              
-              return updatedData;
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Error marking messages as read:', error);
-      }
-    }
-  };
 
   // Функция для возврата к списку пользователей
   const handleBackToUsers = () => {
     setSelectedChatUser(null);
     // Сбрасываем счетчик сообщений при возврате к списку
     lastMessageCountRef.current = 0;
+  };
+
+  // Функция для показа пользователя на карте
+  const handleShowOnMap = (userId: number) => {
+    const user = onlineUsers.find((u: any) => (u.id || u.user_id) === userId);
+    
+    if (user && mapViewRef.current) {
+      const userLat = parseCoordinate(user.lat);
+      const userLng = parseCoordinate(user.lng);
+      
+      if (userLat !== null && userLng !== null) {
+        mapViewRef.current.animateToRegion({
+          latitude: userLat,
+          longitude: userLng,
+          latitudeDelta: 0.005,
+          longitudeDelta: 0.005,
+        }, 1000);
+      }
+    }
   };
 
   if (loading) {
@@ -696,6 +755,34 @@ export default function MapScreen() {
                     return null;
                   }
                   
+                  // Объединяем данные из onlineUsers с актуальными данными из messagesUsers
+                  // onlineUsers уже содержит все актуальные данные (age, description, name, sex, thoughts и т.д.)
+                  // messagesUsers может содержать более свежие данные, если была переписка
+                  const actualUser = (() => {
+                    // Сначала используем данные из onlineUsers как основу (они уже актуальные)
+                    let mergedUser = { ...user };
+                    
+                    // Ищем пользователя в messagesUsers по id для дополнения данными
+                    const userIdKey = Object.keys(messagesUsers).find(id => {
+                      const msgUser = messagesUsers[id];
+                      return msgUser && (msgUser.id === userId || String(msgUser.id) === String(userId) || id === String(userId));
+                    });
+                    
+                    if (userIdKey && messagesUsers[userIdKey]) {
+                      // Объединяем: данные из messagesUsers имеют приоритет для полей, которые могут обновиться
+                      // но сохраняем координаты из onlineUsers (они обновляются каждые 3 секунды)
+                      mergedUser = {
+                        ...mergedUser, // Все данные из onlineUsers (age, description, name, sex, thoughts и т.д.)
+                        ...messagesUsers[userIdKey], // Дополняем/перезаписываем данными из messagesUsers если они есть
+                        lat: user.lat, // Сохраняем координаты из onlineUsers
+                        lng: user.lng,
+                        id: user.id || user.user_id || messagesUsers[userIdKey].id, // Сохраняем id
+                      };
+                    }
+                    
+                    return mergedUser;
+                  })();
+                  
                   return (
                       <Marker
                           key={userId}
@@ -704,12 +791,12 @@ export default function MapScreen() {
                             latitude: userLat,
                             longitude: userLng,
                           }}
-                          onPress={() => handleMarkerPress(user)}
+                          onPress={() => handleMarkerPress(actualUser)}
                       >
                           <View style={styles.markerContainer}>
-                              {user.image ? (
+                              {actualUser.image ? (
                                   <Image
-                                      source={{ uri: getImageUrl(user.image) || '' }}
+                                      source={{ uri: getImageUrl(actualUser.image) || '' }}
                                       style={styles.otherUserMarkerAvatar}
                                       contentFit="cover"
                                   />
@@ -828,365 +915,40 @@ export default function MapScreen() {
         </Modal>
 
         {/* Плашка сообщений снизу */}
-        <Modal
-            visible={messagesVisible}
-            transparent={true}
-            animationType="none"
-            onRequestClose={() => {
-              slideAnim.value = withTiming(1, { duration: 300 });
-              setTimeout(() => setMessagesVisible(false), 300);
-            }}
-        >
-          <View style={styles.messagesBackdrop} pointerEvents="box-none">
-            <TouchableWithoutFeedback
-              onPress={() => {
-                slideAnim.value = withTiming(1, { duration: 300 });
-                setTimeout(() => setMessagesVisible(false), 300);
-              }}
-            >
-              <View style={StyleSheet.absoluteFill} />
-            </TouchableWithoutFeedback>
-            <View pointerEvents="box-none" style={{ flex: 1, justifyContent: 'flex-end' }}>
-              <Animated.View style={[styles.messagesSheet, messagesSheetStyle]} pointerEvents="auto">
-                <View style={styles.messagesSheetInner}>
-                  <View style={styles.messagesHeader}>
-                    {selectedChatUser ? (
-                      <>
-                        <Pressable
-                          style={styles.messagesBackButton}
-                          onPress={() => {
-                            if (showUserInfo) {
-                              setShowUserInfo(false);
-                            } else {
-                              handleBackToUsers();
-                            }
-                          }}
-                        >
-                          <Text style={styles.messagesBackButtonText}>←</Text>
-                        </Pressable>
-                        <Pressable
-                          style={styles.messagesHeaderAvatarContainer}
-                          onPress={() => setShowUserInfo(true)}
-                        >
-                          {(() => {
-                            // Находим актуального пользователя из messagesUsers для получения актуального is_online
-                            const userId = Object.keys(messagesUsers).find(id => {
-                              const user = messagesUsers[id];
-                              return user?.id === selectedChatUser?.id || id === String(selectedChatUser?.id);
-                            });
-                            const actualUser = userId ? messagesUsers[userId] : selectedChatUser;
-                            const isOnline = actualUser?.is_online === 1;
-                            
-                            return selectedChatUser?.image ? (
-                              <Image
-                                source={{ uri: getImageUrl(selectedChatUser.image) || '' }}
-                                style={[
-                                  styles.messagesHeaderAvatar,
-                                  { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
-                                ]}
-                                contentFit="cover"
-                              />
-                            ) : (
-                              <View style={[
-                                styles.messagesHeaderAvatar,
-                                styles.messagesHeaderAvatarPlaceholder,
-                                { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
-                              ]}>
-                                <View style={styles.messagesHeaderAvatarInner} />
-                              </View>
-                            );
-                          })()}
-                        </Pressable>
-                        <Text style={styles.messagesTitle}>
-                          {selectedChatUser?.name || 'Пользователь'}
-                        </Text>
-                      </>
-                    ) : (
-                      <Text style={styles.messagesTitle}>Сообщения1</Text>
-                    )}
-                    <Pressable
-                        onPress={() => {
-                          setSelectedChatUser(null);
-                          slideAnim.value = withTiming(1, { duration: 300 });
-                          setTimeout(() => setMessagesVisible(false), 300);
-                        }}
-                    >
-                      <Text style={styles.messagesCloseButton}>✕</Text>
-                    </Pressable>
-                  </View>
-                  {selectedChatUser ? (
-                    showUserInfo ? (
-                      <ScrollView style={styles.userInfoContainer} contentContainerStyle={styles.userInfoContent}>
-                        {(() => {
-                          // Находим актуального пользователя из messagesUsers
-                          const userId = Object.keys(messagesUsers).find(id => {
-                            const user = messagesUsers[id];
-                            return user?.id === selectedChatUser?.id || id === String(selectedChatUser?.id);
-                          });
-                          const actualUser = userId ? messagesUsers[userId] : selectedChatUser;
-                          const isOnline = actualUser?.is_online === 1;
-                          
-                          return (
-                            <>
-                              <View style={styles.userInfoImageContainer}>
-                                {actualUser?.image ? (
-                                  <Image
-                                    source={{ uri: getImageUrl(actualUser.image) || '' }}
-                                    style={[
-                                      styles.userInfoImage,
-                                      { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
-                                    ]}
-                                    contentFit="cover"
-                                  />
-                                ) : (
-                                  <View style={[
-                                    styles.userInfoImage,
-                                    styles.userInfoImagePlaceholder,
-                                    { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
-                                  ]}>
-                                    <View style={styles.userInfoImageInner} />
-                                  </View>
-                                )}
-                              </View>
-                              
-                              <View style={styles.userInfoDetails}>
-                                <Text style={styles.userInfoName}>
-                                  {actualUser?.name || 'Имя не указано'}
-                                </Text>
-                                
-                                <View style={styles.userInfoRow}>
-                                  <Text style={styles.userInfoLabel}>Возраст:</Text>
-                                  <Text style={styles.userInfoValue}>{actualUser?.age || 'не указан'}</Text>
-                                </View>
-                                
-                                <View style={styles.userInfoRow}>
-                                  <Text style={styles.userInfoLabel}>Пол:</Text>
-                                  <Text style={styles.userInfoValue}>
-                                    {actualUser?.sex === 'male' ? 'Мужской' : actualUser?.sex === 'female' ? 'Женский' : actualUser?.sex || 'не указан'}
-                                  </Text>
-                                </View>
-                                
-                                <View style={styles.userInfoRow}>
-                                  <Text style={styles.userInfoLabel}>Статус:</Text>
-                                  {isOnline ? (
-                                    <Pressable
-                                      style={styles.userInfoShowOnMapButton}
-                                      onPress={() => {
-                                        // Закрываем модальное окно сообщений
-                                        slideAnim.value = withTiming(1, { duration: 300 });
-                                        setTimeout(() => {
-                                          setMessagesVisible(false);
-                                          setShowUserInfo(false);
-                                          
-                                          // Находим пользователя в onlineUsers и наводим карту на его маркер
-                                          const userId = actualUser?.id || selectedChatUser?.id;
-                                          const user = onlineUsers.find((u: any) => (u.id || u.user_id) === userId);
-                                          
-                                          if (user && mapViewRef.current) {
-                                            const userLat = parseCoordinate(user.lat);
-                                            const userLng = parseCoordinate(user.lng);
-                                            
-                                            if (userLat !== null && userLng !== null) {
-                                              mapViewRef.current.animateToRegion({
-                                                latitude: userLat,
-                                                longitude: userLng,
-                                                latitudeDelta: 0.005,
-                                                longitudeDelta: 0.005,
-                                              }, 1000);
-                                            }
-                                          }
-                                        }, 300);
-                                      }}
-                                    >
-                                      <Text style={styles.userInfoShowOnMapButtonText}>Show on map</Text>
-                                    </Pressable>
-                                  ) : (
-                                    <Text style={styles.userInfoValue}>Оффлайн</Text>
-                                  )}
-                                </View>
-                                
-                                {actualUser?.description && (
-                                  <View style={styles.userInfoDescriptionContainer}>
-                                    <Text style={styles.userInfoDescriptionLabel}>Описание:Map</Text>
-                                    <Text style={styles.userInfoDescription}>
-                                      {actualUser.description}
-                                    </Text>
-                                  </View>
-                                )}
-                                
-                                {actualUser?.thoughts && (
-                                  <View style={styles.userInfoThoughtsContainer}>
-                                    <Text style={styles.userInfoThoughts}>
-                                      {actualUser.thoughts}
-                                    </Text>
-                                  </View>
-                                )}
-                                
-                                {/* Кнопка удаления переписки */}
-                                <View style={styles.userInfoDeleteContainer}>
-                                  <Pressable
-                                    style={[styles.userInfoDeleteButton, removingConversation && styles.userInfoDeleteButtonDisabled]}
-                                    onPress={handleRemoveConversation}
-                                    disabled={removingConversation}
-                                  >
-                                    {removingConversation ? (
-                                      <ActivityIndicator size="small" color="#fff" />
-                                    ) : (
-                                      <Text style={styles.userInfoDeleteButtonText}>Удалить переписку</Text>
-                                    )}
-                                  </Pressable>
-                                </View>
-                              </View>
-                            </>
-                          );
-                        })()}
-                      </ScrollView>
-                    ) : (
-                    <View style={styles.chatContainer}>
-                      <ScrollView 
-                        ref={scrollViewRef}
-                        style={styles.messagesContent}
-                        contentContainerStyle={styles.messagesContentContainer}
-                        onContentSizeChange={() => {
-                          scrollViewRef.current?.scrollToEnd({ animated: true });
-                        }}
-                        nestedScrollEnabled={true}
-                        showsVerticalScrollIndicator={true}
-                        scrollEnabled={true}
-                        bounces={true}
-                        alwaysBounceVertical={false}
-                        keyboardShouldPersistTaps="handled"
-                      >
-                        {(() => {
-                          // Находим userId по ключу в messagesUsers
-                          const userId = Object.keys(messagesUsers).find(id => {
-                            const user = messagesUsers[id];
-                            return user?.id === selectedChatUser.id || id === String(selectedChatUser.id);
-                          }) || selectedChatUser.id;
-                          const chatMessages = userId ? getMessagesForUser(userId) : [];
-                          
-                          return chatMessages.length === 0 ? (
-                            <Text style={styles.messagesEmptyText}>Нет сообщений</Text>
-                          ) : (
-                            chatMessages.map((message: any, index: number) => {
-                              const isFromCurrentUser = message.sender_id === userData?.id;
-                              return (
-                                <View
-                                  key={message.id || index}
-                                  style={[
-                                    styles.chatMessage,
-                                    isFromCurrentUser ? styles.chatMessageSent : styles.chatMessageReceived
-                                  ]}
-                                >
-                                  <Text style={[
-                                    styles.chatMessageText,
-                                    isFromCurrentUser ? styles.chatMessageTextSent : styles.chatMessageTextReceived
-                                  ]}>
-                                    {message.message_text || ''}
-                                  </Text>
-                                  <Text style={[
-                                    styles.chatMessageTime,
-                                    isFromCurrentUser ? styles.chatMessageTimeSent : styles.chatMessageTimeReceived
-                                  ]}>
-                                    {formatMessageTime(message.created_at)}
-                                  </Text>
-                                </View>
-                              );
-                            })
-                          );
-                        })()}
-                      </ScrollView>
-                      <View style={styles.chatInputContainer}>
-                        <TextInput
-                          style={styles.chatInput}
-                          value={messageText}
-                          onChangeText={setMessageText}
-                          placeholder="Введите сообщение..."
-                          placeholderTextColor="#999"
-                          multiline
-                          onSubmitEditing={handleSendMessage}
-                        />
-                        <Pressable
-                          style={[styles.chatSendButton, (!messageText.trim() || sendingMessage) && styles.chatSendButtonDisabled]}
-                          onPress={handleSendMessage}
-                          disabled={!messageText.trim() || sendingMessage}
-                        >
-                          {sendingMessage ? (
-                            <ActivityIndicator size="small" color="#fff" />
-                          ) : (
-                            <Text style={styles.chatSendButtonText}>Отправить</Text>
-                          )}
-                      </Pressable>
-                    </View>
-                  </View>
-                  )
-                ) : (
-                    <View style={styles.messagesUsersContainer}>
-                      <ScrollView 
-                        style={styles.messagesContent}
-                        contentContainerStyle={styles.messagesUsersContentContainer}
-                        nestedScrollEnabled={true}
-                        showsVerticalScrollIndicator={true}
-                        scrollEnabled={true}
-                        bounces={true}
-                        keyboardShouldPersistTaps="handled"
-                      >
-                        {Object.keys(messagesUsers).length === 0 ? (
-                          <Text style={styles.messagesEmptyText}>Здесь будут ваши сообщения</Text>
-                        ) : (
-                          Object.keys(messagesUsers).map((userId) => {
-                            const user = messagesUsers[userId];
-                            return (
-                              <Pressable
-                                key={userId}
-                                style={styles.messageUserItem}
-                                onPress={() => handleOpenChat(userId)}
-                              >
-                                <View style={styles.messageUserAvatarContainer}>
-                                  {user?.image ? (
-                                    <Image
-                                      source={{ uri: getImageUrl(user.image) || '' }}
-                                      style={[
-                                        styles.messageUserAvatar,
-                                        { borderColor: user?.is_online === 1 ? '#4ECDC4' : '#FF6B6B' }
-                                      ]}
-                                      contentFit="cover"
-                                    />
-                                  ) : (
-                                    <View style={[
-                                      styles.messageUserAvatar,
-                                      styles.messageUserAvatarPlaceholder,
-                                      { borderColor: user?.is_online === 1 ? '#4ECDC4' : '#FF6B6B' }
-                                    ]}>
-                                      <View style={styles.messageUserAvatarInner} />
-                                    </View>
-                                  )}
-                                  {getUnreadCountForUser(userId) > 0 && (
-                                    <View style={[
-                                      styles.messageUserBadge,
-                                      { backgroundColor: user?.is_online === 1 ? '#4ECDC4' : '#FF6B6B' }
-                                    ]}>
-                                      <Text style={styles.messageUserBadgeText}>
-                                        {getUnreadCountForUser(userId) > 99 ? '99+' : getUnreadCountForUser(userId)}
-                                      </Text>
-                                    </View>
-                                  )}
-                                </View>
-                                <Text style={styles.messageUserName}>
-                                  {user?.name || 'Пользователь'}
-                                </Text>
-                              </Pressable>
-                            );
-                          })
-                        )}
-                      </ScrollView>
-                    </View>
-                  )}
-                </View>
-              </Animated.View>
-            </View>
-          </View>
-        </Modal>
+        <MessagesModal
+          visible={messagesVisible}
+          slideAnim={slideAnim}
+          messagesUsers={messagesUsers}
+          messagesData={messagesData}
+          selectedChatUser={selectedChatUser}
+          showUserInfo={showUserInfo}
+          messageText={messageText}
+          sendingMessage={sendingMessage}
+          removingConversation={removingConversation}
+          userData={userData}
+          scrollViewRef={scrollViewRef}
+          lastMessageCountRef={lastMessageCountRef}
+          onClose={() => {
+            setSelectedChatUser(null);
+            setMessagesVisible(false);
+          }}
+          onBackToUsers={handleBackToUsers}
+          onSetShowUserInfo={setShowUserInfo}
+          onSetSelectedChatUser={setSelectedChatUser}
+          onSetMessageText={setMessageText}
+          onSendMessage={handleSendMessage}
+          onRemoveConversation={handleRemoveConversation}
+          onShowOnMap={handleShowOnMap}
+          getImageUrl={getImageUrl}
+          getUnreadCountForUser={getUnreadCountForUser}
+          getMessagesForUser={getMessagesForUser}
+          formatMessageTime={formatMessageTime}
+          title="Сообщения"
+          getToken={getToken}
+          readMessages={readMessages}
+          setMessagesData={setMessagesData}
+          setUnreadMessagesCount={setUnreadMessagesCount}
+        />
       </View>
   );
 }
