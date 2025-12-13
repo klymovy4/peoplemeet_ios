@@ -1,5 +1,5 @@
 import { getToken } from '@/services/auth';
-import { getSelf, readMessages, sendMessage, removeConversation } from '@/services/api';
+import { getSelf, readMessages, sendMessage } from '@/services/api';
 import { enableUsersOnlinePolling, disableUsersOnlinePolling, setUsersOnlineCallback } from '@/services/usersOnlineInterval';
 import { startMessagesInterval, setMessagesCallback } from '@/services/messagesInterval';
 import { playMessageSound } from '@/services/soundService';
@@ -25,7 +25,6 @@ export default function MapScreen() {
   const [messageText, setMessageText] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const [showUserInfo, setShowUserInfo] = useState(false);
-  const [removingConversation, setRemovingConversation] = useState(false);
   const slideAnim = useSharedValue(1); // Начальное значение 1 = плашка скрыта внизу
   const avatarAnim = useSharedValue({ x: 0, y: 0, scale: 1 });
   const userIdRef = useRef<number | null>(null);
@@ -587,74 +586,6 @@ export default function MapScreen() {
     }
   };
 
-  const handleRemoveConversation = async () => {
-    if (!selectedChatUser || removingConversation) {
-      return;
-    }
-
-    // Показываем подтверждение перед удалением
-    Alert.alert(
-      'Удалить переписку',
-      'Вы уверены, что хотите удалить переписку с этим пользователем? Это действие нельзя отменить.',
-      [
-        {
-          text: 'Отмена',
-          style: 'cancel',
-        },
-        {
-          text: 'Удалить',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setRemovingConversation(true);
-              const token = await getToken();
-              if (!token || !selectedChatUser.id) {
-                return;
-              }
-
-              const result = await removeConversation(token, selectedChatUser.id);
-              if (result.status === 'success') {
-                Toast.show({
-                  type: 'success',
-                  text1: 'Успешно',
-                  text2: 'Переписка удалена',
-                });
-                
-                // Закрываем модальное окно сообщений
-                slideAnim.value = withTiming(1, { duration: 300 });
-                setTimeout(() => {
-                  setMessagesVisible(false);
-                  setSelectedChatUser(null);
-                  setShowUserInfo(false);
-                }, 300);
-                
-                // Обновляем данные сообщений
-                setMessagesUsers({});
-                setMessagesData({});
-                setUnreadMessagesCount(0);
-              } else {
-                Toast.show({
-                  type: 'error',
-                  text1: 'Ошибка',
-                  text2: result?.data?.message || 'Не удалось удалить переписку',
-                });
-              }
-            } catch (error) {
-              console.error('Error removing conversation:', error);
-              Toast.show({
-                type: 'error',
-                text1: 'Ошибка',
-                text2: 'Не удалось удалить переписку',
-              });
-            } finally {
-              setRemovingConversation(false);
-            }
-          },
-        },
-      ]
-    );
-  };
-
   // Функция для открытия чата с пользователем
 
   // Функция для возврата к списку пользователей
@@ -955,7 +886,6 @@ export default function MapScreen() {
           showUserInfo={showUserInfo}
           messageText={messageText}
           sendingMessage={sendingMessage}
-          removingConversation={removingConversation}
           userData={userData}
           scrollViewRef={scrollViewRef}
           lastMessageCountRef={lastMessageCountRef}
@@ -968,7 +898,6 @@ export default function MapScreen() {
           onSetSelectedChatUser={setSelectedChatUser}
           onSetMessageText={setMessageText}
           onSendMessage={handleSendMessage}
-          onRemoveConversation={handleRemoveConversation}
           onShowOnMap={handleShowOnMap}
           getImageUrl={getImageUrl}
           getUnreadCountForUser={getUnreadCountForUser}

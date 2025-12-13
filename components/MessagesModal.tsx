@@ -1,8 +1,9 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { View, StyleSheet, Modal, Pressable, Text, ScrollView, TextInput, ActivityIndicator, TouchableWithoutFeedback, Alert } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import Toast from 'react-native-toast-message';
+import { removeConversation } from '@/services/api';
 
 interface MessagesModalProps {
   visible: boolean;
@@ -70,6 +71,10 @@ export default function MessagesModal({
   setUnreadMessagesCount,
   onlineUsers = [],
 }: MessagesModalProps) {
+  // Внутреннее состояние для удаления переписки (если не передано извне)
+  const [internalRemovingConversation, setInternalRemovingConversation] = useState(false);
+  const isRemovingConversation = removingConversation !== undefined ? removingConversation : internalRemovingConversation;
+
   const messagesSheetStyle = useAnimatedStyle(() => {
     return {
       transform: [{ translateY: slideAnim.value * 600 }],
@@ -127,6 +132,95 @@ export default function MessagesModal({
     
     // Иначе используем selectedChatUser как fallback
     return selectedChatUser;
+  };
+
+  // Универсальная функция удаления переписки
+  const handleRemoveConversation = async () => {
+    if (isRemovingConversation) {
+      return;
+    }
+
+    const actualUser = getActualUser();
+    const targetUserId = actualUser?.id || selectedChatUser?.id;
+
+    if (!targetUserId) {
+      Toast.show({
+        type: 'error',
+        text1: 'Ошибка',
+        text2: 'Пользователь не выбран',
+      });
+      return;
+    }
+
+    // Показываем подтверждение перед удалением
+    Alert.alert(
+      'Удалить переписку',
+      'Вы уверены, что хотите удалить переписку с этим пользователем? Это действие нельзя отменить.',
+      [
+        {
+          text: 'Отмена',
+          style: 'cancel',
+        },
+        {
+          text: 'Удалить',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (removingConversation === undefined) {
+                setInternalRemovingConversation(true);
+              }
+              
+              const token = await getToken();
+              if (!token || !targetUserId) {
+                if (removingConversation === undefined) {
+                  setInternalRemovingConversation(false);
+                }
+                return;
+              }
+
+              const result = await removeConversation(token, targetUserId);
+              
+              if (result.status === 'success') {
+                Toast.show({
+                  type: 'success',
+                  text1: 'Успешно',
+                  text2: 'Переписка удалена',
+                });
+                
+                // Закрываем модальное окно сообщений
+                slideAnim.value = withTiming(1, { duration: 300 });
+                setTimeout(() => {
+                  onClose();
+                  onSetSelectedChatUser(null);
+                  onSetShowUserInfo(false);
+                }, 300);
+                
+                // Обновляем данные сообщений
+                setMessagesData({});
+                setUnreadMessagesCount(0);
+              } else {
+                Toast.show({
+                  type: 'error',
+                  text1: 'Ошибка',
+                  text2: result?.data?.message || 'Не удалось удалить переписку',
+                });
+              }
+            } catch (error) {
+              console.error('Error removing conversation:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Ошибка',
+                text2: 'Не удалось удалить переписку',
+              });
+            } finally {
+              if (removingConversation === undefined) {
+                setInternalRemovingConversation(false);
+              }
+            }
+          },
+        },
+      ]
+    );
   };
 
   // Функция для открытия чата с пользователем и пометки сообщений как прочитанных
@@ -367,30 +461,43 @@ export default function MessagesModal({
                             
                             {(() => {
                               // Проверяем, есть ли сообщения у этого пользователя
+                              const targetUserId = actualUser?.id || selectedChatUser?.id;
                               const userId = Object.keys(messagesUsers).find(id => {
                                 const user = messagesUsers[id];
-                                return user && (user.id === selectedChatUser.id || 
-                                                String(user.id) === String(selectedChatUser.id) || 
-                                                id === String(selectedChatUser.id));
-                              }) || selectedChatUser.id;
+                                return user && (user.id === targetUserId || 
+                                                String(user.id) === String(targetUserId) || 
+                                                id === String(targetUserId));
+                              });
                               const chatMessages = userId ? getMessagesForUser(userId) : [];
+                              const hasMessages = chatMessages.length > 0;
                               
-                              // Показываем кнопку "Удалить переписку" только если есть сообщения и передан callback
-                              return onRemoveConversation && chatMessages.length > 0 ? (
+                              // Показываем кнопку только если есть сообщения
+                              if (!hasMessages) {
+                                return null;
+                              }
+                              
+                              return (
                                 <View style={styles.userInfoDeleteContainer}>
                                   <Pressable
-                                    style={[styles.userInfoDeleteButton, removingConversation && styles.userInfoDeleteButtonDisabled]}
-                                    onPress={onRemoveConversation}
-                                    disabled={removingConversation}
+                                    style={[styles.userInfoDeleteButton, isRemovingConversation && styles.userInfoDeleteButtonDisabled]}
+                                    onPress={() => {
+                                      // Используем переданную функцию или внутреннюю
+                                      if (onRemoveConversation) {
+                                        onRemoveConversation();
+                                      } else {
+                                        handleRemoveConversation();
+                                      }
+                                    }}
+                                    disabled={isRemovingConversation}
                                   >
-                                    {removingConversation ? (
+                                    {isRemovingConversation ? (
                                       <ActivityIndicator size="small" color="#fff" />
                                     ) : (
                                       <Text style={styles.userInfoDeleteButtonText}>Удалить переписку</Text>
                                     )}
                                   </Pressable>
                                 </View>
-                              ) : null;
+                              );
                             })()}
                           </View>
                         </>
@@ -497,7 +604,7 @@ export default function MessagesModal({
                             const uId = u.id || u.user_id;
                             return uId === user?.id || String(uId) === String(user?.id) || String(uId) === String(userId);
                           }));
-                        
+                        console.log(user)
                         return (
                             <Pressable
                               key={userId}
@@ -535,7 +642,7 @@ export default function MessagesModal({
                               )}
                             </View>
                             <Text style={styles.messageUserName}>
-                              {user?.name || 'Пользователь'}
+                             {user?.name || `user ${user?.id}`}
                             </Text>
                           </Pressable>
                         );
