@@ -701,6 +701,11 @@ export default function MapScreen() {
                           <View style={styles.markerAvatarInner} />
                         </View>
                     )}
+                    {userData?.thoughts && (
+                      <Text style={styles.markerThoughts} numberOfLines={2}>
+                        {userData.thoughts}
+                      </Text>
+                    )}
                   </View>
                 </Marker>
 
@@ -766,6 +771,11 @@ export default function MapScreen() {
                                   <View style={[styles.otherUserMarkerAvatar, styles.markerAvatarPlaceholder, { borderColor: markerColor }]}>
                                       <View style={styles.markerAvatarInner} />
                                   </View>
+                              )}
+                              {actualUser?.thoughts && (
+                                <Text style={styles.markerThoughts} numberOfLines={2}>
+                                  {actualUser.thoughts}
+                                </Text>
                               )}
                           </View>
                       </Marker>
@@ -844,14 +854,6 @@ export default function MapScreen() {
                         <Text style={styles.userCardDescriptionLabel}>Description:</Text>
                         <Text style={styles.userCardDescription}>
                           {selectedUser.description}
-                        </Text>
-                      </View>
-                    )}
-                    
-                    {selectedUser?.thoughts && (
-                      <View style={styles.userCardThoughtsContainer}>
-                        <Text style={styles.userCardThoughts}>
-                          {selectedUser.thoughts}
                         </Text>
                       </View>
                     )}
@@ -982,13 +984,9 @@ const styles = StyleSheet.create({
     color: '#999',
   },
   markerContainer: {
+    position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
-    // borderColor: '#4ECDC4',
-    // borderWidth: 3,
-    // backgroundColor: '#fff',
-    // borderRadius: 25,
-
   },
   markerAvatar: {
     width: 50,
@@ -1016,6 +1014,34 @@ const styles = StyleSheet.create({
     borderWidth: 3, // Увеличено для лучшей видимости уникального цвета
     borderColor: '#FF6B6B', // Дефолтный цвет, будет перезаписан динамически
     backgroundColor: '#fff',
+  },
+  markerThoughts: {
+    position: 'absolute',
+    top: -40,
+    right: -135,
+    fontSize: 12,
+    color: '#333',
+    maxWidth: 150,
+    minWidth: 150,
+    height: 'auto',
+    textAlign: 'left',
+    fontStyle: 'italic',
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    overflow: 'hidden',
+    zIndex: 10,
+    shadowColor: '#000',
+    // shadowOffset: {
+    //   width: 0,
+      // height: 2,
+    // },
+    // shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.1)',
   },
   messageButton: {
     width: 50,
@@ -1348,7 +1374,6 @@ const styles = StyleSheet.create({
   },
   userCardDescriptionContainer: {
     marginTop: 15,
-    marginBottom: 10,
   },
   userCardDescriptionLabel: {
     fontSize: 16,

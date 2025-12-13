@@ -1042,53 +1042,29 @@ export default function ProfileScreen() {
                     style={[styles.input, styles.textArea]}
                     value={thoughts}
                     onChangeText={(text) => {
-                      // Ограничиваем до 100 символов
-                      if (text.length <= 100) {
+                      // Ограничиваем до 38 символов
+                      if (text.length <= 38) {
                         setThoughts(text);
                       } else {
-                        setThoughts(text.substring(0, 100));
+                        setThoughts(text.substring(0, 38));
                       }
                     }}
-                    placeholder="Введите мысли (максимум 100 символов)"
+                    placeholder="Введите мысли (максимум 38 символов)"
                     placeholderTextColor="#999"
                     multiline
                     numberOfLines={4}
                     textAlignVertical="top"
-                    maxLength={100}
+                    maxLength={38}
                   />
                   {thoughts !== null && thoughts !== undefined && (
                     <Text style={[
                       styles.charCountText,
-                      thoughts.length >= 100 && styles.charCountTextWarning
+                      thoughts.length >= 38 && styles.charCountTextWarning
                     ]}>
-                      {thoughts.length}/100 символов
+                      {thoughts.length}/38 символов
                     </Text>
                   )}
                 </View>
-
-
-
-                {/*/!* Координаты (показываем только если оба значения есть) *!/*/}
-                {/*{userData.lat !== null && userData.lat !== undefined &&*/}
-                {/*    userData.lng !== null && userData.lng !== undefined && (*/}
-                {/*        <View style={styles.infoRow}>*/}
-                {/*          <Text style={styles.infoLabel}>Координаты:</Text>*/}
-                {/*          <Text style={styles.infoValue}>{userData.lat}, {userData.lng}</Text>*/}
-                {/*        </View>*/}
-                {/*    )}*/}
-
-                {/*/!* Последний раз онлайн *!/*/}
-                {/*<View style={styles.infoRow}>*/}
-                {/*  <Text style={styles.infoLabel}>Последний раз онлайн:</Text>*/}
-                {/*  <Text style={styles.infoValue}>{formatDate(userData.last_time_online)}</Text>*/}
-                {/*</View>*/}
-                {/*/!* ID *!/*/}
-                {/*{userData.id !== null && userData.id !== undefined && (*/}
-                {/*    <View style={styles.infoRow}>*/}
-                {/*      <Text style={styles.infoLabel}>ID:</Text>*/}
-                {/*      <Text style={styles.infoValue}>{userData.id}</Text>*/}
-                {/*    </View>*/}
-                {/*)}*/}
               </View>
           )}
 
@@ -1175,8 +1151,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
-    borderWidth: 3,
-    borderColor: 'red'
   },
   loadingContainer: {
     flex: 1,
@@ -1187,7 +1161,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: 'center',
     padding: 16,
-    // paddingTop: 40,
   },
   header: {
     paddingTop: 50,
