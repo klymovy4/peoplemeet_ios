@@ -332,21 +332,33 @@ export default function MessagesModal({
                               </View>
                             )}
                             
-                            {onRemoveConversation && (
-                              <View style={styles.userInfoDeleteContainer}>
-                                <Pressable
-                                  style={[styles.userInfoDeleteButton, removingConversation && styles.userInfoDeleteButtonDisabled]}
-                                  onPress={onRemoveConversation}
-                                  disabled={removingConversation}
-                                >
-                                  {removingConversation ? (
-                                    <ActivityIndicator size="small" color="#fff" />
-                                  ) : (
-                                    <Text style={styles.userInfoDeleteButtonText}>Удалить переписку</Text>
-                                  )}
-                                </Pressable>
-                              </View>
-                            )}
+                            {(() => {
+                              // Проверяем, есть ли сообщения у этого пользователя
+                              const userId = Object.keys(messagesUsers).find(id => {
+                                const user = messagesUsers[id];
+                                return user && (user.id === selectedChatUser.id || 
+                                                String(user.id) === String(selectedChatUser.id) || 
+                                                id === String(selectedChatUser.id));
+                              }) || selectedChatUser.id;
+                              const chatMessages = userId ? getMessagesForUser(userId) : [];
+                              
+                              // Показываем кнопку "Удалить переписку" только если есть сообщения и передан callback
+                              return onRemoveConversation && chatMessages.length > 0 ? (
+                                <View style={styles.userInfoDeleteContainer}>
+                                  <Pressable
+                                    style={[styles.userInfoDeleteButton, removingConversation && styles.userInfoDeleteButtonDisabled]}
+                                    onPress={onRemoveConversation}
+                                    disabled={removingConversation}
+                                  >
+                                    {removingConversation ? (
+                                      <ActivityIndicator size="small" color="#fff" />
+                                    ) : (
+                                      <Text style={styles.userInfoDeleteButtonText}>Удалить переписку</Text>
+                                    )}
+                                  </Pressable>
+                                </View>
+                              ) : null;
+                            })()}
                           </View>
                         </>
                       );
