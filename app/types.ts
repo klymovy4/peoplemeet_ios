@@ -10,6 +10,12 @@ export interface IUser {
    thoughts: string
 }
 
+export interface ISelf extends IUser{
+   email: string
+   is_online: 0 | 1
+   last_time_online: string
+}
+
 export interface IMessage {
    created_at: string;
    id: number;
@@ -36,3 +42,10 @@ export interface IReceiveGetMessages {
    messages: MessagesByUserId,
    users: WroteUserObj
 }
+
+export interface IFixedRegion {
+   latitude: number,
+   longitude: number,
+   latitudeDelta: number,
+   longitudeDelta: number,
+} {}
