@@ -5,9 +5,10 @@ import { startMessagesInterval, stopMessagesInterval, setMessagesCallback } from
 import { playMessageSound } from '@/services/soundService';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
+import { formatMessageTime, getImageUrl } from '@/app/utils/utils';
 import { useEffect, useState, useRef } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, TextInput, Platform, Switch, Modal, TouchableWithoutFeedback } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring } from 'react-native-reanimated';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, TextInput, Platform, Switch } from 'react-native';
+import { useSharedValue, withSpring } from 'react-native-reanimated';
 import Toast from 'react-native-toast-message';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -730,16 +731,6 @@ export default function ProfileScreen() {
     }
   };
 
-  const getImageUrl = (imageName: string | null | undefined) => {
-    if (!imageName) return null;
-    // Если изображение уже содержит полный URL, вернем его
-    if (imageName.startsWith('http://') || imageName.startsWith('https://')) {
-      return imageName;
-    }
-    // Формируем URL для изображения
-    return `https://peoplemeet.com.ua/uploads/${imageName}`;
-  };
-
   // Функция для подсчета непрочитанных сообщений от конкретного пользователя
   const getUnreadCountForUser = (userId: string | number): number => {
     const messages = messagesData.messages || {};
@@ -817,39 +808,6 @@ export default function ProfileScreen() {
       pathname: '/map',
       params: { focusUserId: String(userId) }
     });
-  };
-
-  // Функция для форматирования времени из created_at
-  const formatMessageTime = (createdAt: string | null | undefined): string => {
-    if (!createdAt) return '';
-    
-    try {
-      // Парсим строку времени (формат "2025-12-10 20:03:11")
-      // Если строка не содержит информации о часовом поясе, 
-      // интерпретируем её как UTC и конвертируем в локальное время
-      let date: Date;
-      
-      // Проверяем, есть ли информация о часовом поясе
-      if (createdAt.includes('T') || createdAt.includes('Z') || createdAt.includes('+') || createdAt.includes('-', 10)) {
-        // Уже есть информация о часовом поясе
-        date = new Date(createdAt);
-      } else {
-        // Нет информации о часовом поясе, предполагаем UTC и добавляем 'Z'
-        date = new Date(createdAt.replace(' ', 'T') + 'Z');
-      }
-      
-      // Используем локальное время устройства
-      const hours = date.getHours();
-      const minutes = date.getMinutes();
-      
-      // Формат 24 часа (локальное время устройства)
-      const hoursStr = hours.toString().padStart(2, '0');
-      const minutesStr = minutes.toString().padStart(2, '0');
-      
-      return `${hoursStr}:${minutesStr}`;
-    } catch (error) {
-      return '';
-    }
   };
 
   if (loading) {

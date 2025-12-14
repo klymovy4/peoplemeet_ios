@@ -61,19 +61,19 @@ export default function LoginScreen() {
 
           {/* Login button */}
           <Pressable style={styles.loginButton} onPress={handleLogin}>
-            <Text style={styles.loginButtonText}>Log in111</Text>
+            <Text style={styles.loginButtonText}>Log in</Text>
           </Pressable>
 
           {/* Forgot password link */}
           <Pressable onPress={handleForgotPassword}>
-            <Text style={styles.forgotPassword}>Forgot Pas2sword</Text>
+            <Text style={styles.forgotPassword}>Forgot Password</Text>
           </Pressable>
 
           {/* Sign up option */}
           <View style={styles.signUpContainer}>
             <Text style={styles.signUpText}>Or </Text>
             <Pressable onPress={handleSignUp}>
-              <Text style={styles.signUpLink}>Sign 2Up</Text>
+              <Text style={styles.signUpLink}>Sign Up</Text>
             </Pressable>
           </View>
         </View>
