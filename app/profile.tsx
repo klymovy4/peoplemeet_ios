@@ -1000,11 +1000,11 @@ export default function ProfileScreen() {
                     style={[styles.input, styles.textArea]}
                     value={thoughts}
                     onChangeText={(text) => {
-                      // Ограничиваем до 38 символов
-                      if (text.length <= 38) {
+                      // Ограничиваем до 21 символов
+                      if (text.length <= 21) {
                         setThoughts(text);
                       } else {
-                        setThoughts(text.substring(0, 38));
+                        setThoughts(text.substring(0, 21));
                       }
                     }}
                     placeholder="Введите мысли (максимум 38 символов)"
@@ -1012,21 +1012,21 @@ export default function ProfileScreen() {
                     multiline
                     numberOfLines={4}
                     textAlignVertical="top"
-                    maxLength={38}
+                    maxLength={21}
                   />
                   {thoughts !== null && thoughts !== undefined && (
                     <Text style={[
                       styles.charCountText,
-                      thoughts.length >= 38 && styles.charCountTextWarning
+                      thoughts.length >= 21 && styles.charCountTextWarning
                     ]}>
-                      {thoughts.length}/38 символов
+                      {thoughts.length}/21 символов
                     </Text>
                   )}
                 </View>
               </View>
           )}
 
-          <Pressable 
+          <Pressable
             style={[
               styles.saveButton, 
               (saving || !isFormValid()) && styles.saveButtonDisabled
