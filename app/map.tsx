@@ -1,5 +1,5 @@
 import { getToken } from '@/services/auth';
-import { getSelf, readMessages, sendMessage } from '@/services/api';
+import { getSelf, readMessages, sendMessage, getUsersOnline } from '@/services/api';
 import { enableUsersOnlinePolling, disableUsersOnlinePolling, setUsersOnlineCallback } from '@/services/usersOnlineInterval';
 import { startMessagesInterval, setMessagesCallback } from '@/services/messagesInterval';
 import { playMessageSound } from '@/services/soundService';
@@ -17,6 +17,7 @@ export default function MapScreen() {
   const [loading, setLoading] = useState(true);
   const [messagesVisible, setMessagesVisible] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
+  const [currentUserFromOnline, setCurrentUserFromOnline] = useState<any | null>(null); // Актуальные данные текущего пользователя из online_users
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [messagesUsers, setMessagesUsers] = useState<any>({});
@@ -25,6 +26,8 @@ export default function MapScreen() {
   const [messageText, setMessageText] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const [showUserInfo, setShowUserInfo] = useState(false);
+  const [savedZoom, setSavedZoom] = useState<number | null>(null); // Сохраняем zoom после приближения кластера
+  const [fixedRegion, setFixedRegion] = useState<any>(null); // Фиксированная позиция камеры после раскрытия кластера
   const slideAnim = useSharedValue(1); // Начальное значение 1 = плашка скрыта внизу
   const avatarAnim = useSharedValue({ x: 0, y: 0, scale: 1 });
   const userIdRef = useRef<number | null>(null);
@@ -33,6 +36,10 @@ export default function MapScreen() {
   const previousUnreadCountRef = useRef<number>(0); // Храним предыдущее количество непрочитанных сообщений
   const previousMessagesRef = useRef<any>({}); // Храним предыдущие сообщения для определения новых
   const mapViewRef = useRef<any>(null);
+  const currentRegionRef = useRef<any>(null); // Сохраняем текущую позицию камеры
+  const isUserInteractingRef = useRef<boolean>(false); // Флаг, что пользователь управляет камерой
+  const isUpdatingDataRef = useRef<boolean>(false); // Флаг, что происходит обновление данных
+  const isClusterExpandingRef = useRef<boolean>(false); // Флаг, что происходит раскрытие кластера
   const params = useLocalSearchParams();
 
   useEffect(() => {
@@ -78,7 +85,25 @@ export default function MapScreen() {
         usersArray = users.data;
       }
       
-      // Фильтруем текущего пользователя из списка и проверяем валидность данных
+      // Находим данные текущего пользователя в ответе и сохраняем отдельно
+      // Это гарантирует использование актуальных данных из последнего запроса
+      const currentUserData = usersArray.find((user: any) => {
+        const userId = user.id || user.user_id;
+        return userId === currentUserId;
+      });
+      
+      // Сохраняем актуальные данные текущего пользователя из online_users
+      if (currentUserData) {
+        const parsedCurrentUser = {
+          ...currentUserData,
+          id: currentUserData.id || currentUserData.user_id,
+          lat: parseCoordinate(currentUserData.lat),
+          lng: parseCoordinate(currentUserData.lng),
+        };
+        setCurrentUserFromOnline(parsedCurrentUser);
+      }
+      
+      // Фильтруем текущего пользователя из списка других пользователей и проверяем валидность данных
       const filteredUsers = usersArray
         .filter((user: any) => {
           const userId = user.id || user.user_id;
@@ -97,26 +122,15 @@ export default function MapScreen() {
           lng: parseCoordinate(user.lng),
         }));
 
-      // Обновляем состояние только если данные изменились
-      // Это предотвращает ненужные перерендеры и краши
+      // Всегда обновляем состояние новыми данными из online_users
+      // Это гарантирует, что маркеры используют актуальные данные (thoughts, image и т.д.)
       // Используем небольшую задержку для предотвращения крашей при быстрых обновлениях
+      isUpdatingDataRef.current = true;
       setTimeout(() => {
-        setOnlineUsers((prevUsers) => {
-          // Проверяем, действительно ли данные изменились
-          if (prevUsers.length === filteredUsers.length) {
-            const prevIds = new Set(prevUsers.map((u: any) => String(u.id || u.user_id)));
-            const newIds = new Set(filteredUsers.map((u: any) => String(u.id || u.user_id)));
-            const idsChanged = prevIds.size !== newIds.size || 
-              [...prevIds].some(id => !newIds.has(id));
-            
-            if (!idsChanged) {
-              // Данные не изменились, возвращаем предыдущее состояние
-              return prevUsers;
-            }
-          }
-          
-          return filteredUsers;
-        });
+        setOnlineUsers(filteredUsers);
+        setTimeout(() => {
+          isUpdatingDataRef.current = false;
+        }, 200);
       }, 50);
     });
 
@@ -124,6 +138,7 @@ export default function MapScreen() {
     return () => {
       setUsersOnlineCallback(null);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Обработка параметра focusUserId для фокуса на маркер пользователя
@@ -347,8 +362,12 @@ export default function MapScreen() {
     return isNaN(parsed) ? null : parsed;
   };
 
-  const userLat = parseCoordinate(userData?.lat);
-  const userLng = parseCoordinate(userData?.lng);
+  // Используем актуальные данные текущего пользователя из online_users, если они есть
+  // Иначе используем данные из userData (при первой загрузке)
+  const currentUserData = currentUserFromOnline || userData;
+  const userLat = parseCoordinate(currentUserData?.lat);
+  const userLng = parseCoordinate(currentUserData?.lng);
+
 
   // Функция для генерации уникального цвета на основе имени, возраста и пола пользователя
   const getUserMarkerColor = (user: any): string => {
@@ -399,17 +418,103 @@ export default function MapScreen() {
     return d > 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`;
   };
 
-  const handleMarkerPress = (user: any) => {
-    setSelectedUser(user);
+  const handleMarkerPress = async (user: any) => {
+    const userId = user.id;
+    
+    // Сразу ищем актуальные данные пользователя в onlineUsers
+    // onlineUsers обновляются каждые 3 секунды и содержат свежую информацию
+    const actualUser = onlineUsers.find((u: any) => {
+      const uId = u.id || u.user_id;
+      return uId === userId || String(uId) === String(userId);
+    });
+    
+    // Если нашли актуальные данные в onlineUsers, используем их
+    if (actualUser) {
+      // Объединяем данные: приоритет у актуальных данных из onlineUsers
+      const updatedUser = {
+        ...user, // Базовые данные из маркера
+        ...actualUser, // Актуальные данные из onlineUsers (перезаписывают старые)
+        id: userId, // Сохраняем id
+        lat: actualUser.lat || user.lat, // Сохраняем координаты
+        lng: actualUser.lng || user.lng,
+      };
+      setSelectedUser(updatedUser);
+    } else {
+      // Если пользователя нет в onlineUsers, проверяем messagesUsers
+      const userIdKey = Object.keys(messagesUsers).find(id => {
+        const msgUser = messagesUsers[id];
+        return msgUser && (msgUser.id === userId || String(msgUser.id) === String(userId) || id === String(userId));
+      });
+      
+      if (userIdKey && messagesUsers[userIdKey]) {
+        // Объединяем данные из messagesUsers
+        const updatedUser = {
+          ...user,
+          ...messagesUsers[userIdKey],
+          id: userId,
+          lat: user.lat, // Сохраняем координаты из маркера
+          lng: user.lng,
+        };
+        setSelectedUser(updatedUser);
+      } else {
+        // Используем данные из маркера как есть
+        setSelectedUser(user);
+      }
+    }
+    
+    // Дополнительно: запрашиваем свежие данные через API для гарантии актуальности
+    // Это полезно если пользователь только что изменил данные
+    try {
+      const token = await getToken();
+      if (token && userId) {
+        // Запрашиваем актуальный список пользователей
+        const freshUsers = await getUsersOnline(token);
+        if (freshUsers) {
+          let usersArray: any[] = [];
+          
+          // Обрабатываем разные форматы ответа
+          if (Array.isArray(freshUsers)) {
+            usersArray = freshUsers;
+          } else if (freshUsers.users && Array.isArray(freshUsers.users)) {
+            usersArray = freshUsers.users;
+          } else if (freshUsers.data && Array.isArray(freshUsers.data)) {
+            usersArray = freshUsers.data;
+          }
+          
+          // Ищем пользователя в свежих данных
+          const freshUser = usersArray.find((u: any) => {
+            const uId = u.id || u.user_id;
+            return uId === userId || String(uId) === String(userId);
+          });
+          
+          // Если нашли свежие данные, обновляем selectedUser
+          if (freshUser) {
+            setSelectedUser((prevUser: any) => {
+              if (!prevUser || (prevUser.id || prevUser.user_id) !== userId) {
+                return prevUser; // Если selectedUser изменился, не обновляем
+              }
+              
+              return {
+                ...prevUser,
+                ...freshUser,
+                id: userId,
+                lat: freshUser.lat || prevUser.lat,
+                lng: freshUser.lng || prevUser.lng,
+              };
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching fresh user data:', error);
+      // Игнорируем ошибку, используем данные которые уже есть
+    }
   };
 
   // Функция для рендеринга кластера
   const renderCluster = (cluster: any) => {
     const { id, geometry, properties } = cluster;
     const { cluster_id, point_count } = properties;
-    
-    // Для маленьких кластеров (2-3 точки) используем более агрессивное приближение
-    const isSmallCluster = point_count <= 3;
     
     return (
       <Marker
@@ -418,27 +523,115 @@ export default function MapScreen() {
           latitude: geometry.coordinates[1],
           longitude: geometry.coordinates[0],
         }}
-        onPress={() => {
-          const lat = geometry.coordinates[1];
-          const lng = geometry.coordinates[0];
-
-          // 🔥 Для кластеров из 2 точек нужен ОЧЕНЬ маленький delta
-          const delta =
-              point_count === 2
-                  ? 0.0000005
-                  : point_count === 3
-                      ? 0.000002
-                      : 0.00001;
-
-          mapViewRef.current?.animateToRegion(
-              {
-                latitude: lat,
-                longitude: lng,
-                latitudeDelta: delta,
-                longitudeDelta: delta,
-              },
-              500
-          );
+        onPress={async () => {
+          // Получаем текущую позицию камеры и увеличиваем только zoom
+          // Это сохранит позицию камеры и не будет отводить её назад
+          try {
+            if (mapViewRef.current?.getCamera) {
+              const camera = await mapViewRef.current.getCamera();
+              const currentZoom = camera?.zoom || 10;
+              const currentCenter = camera?.center || {
+                latitude: geometry.coordinates[1],
+                longitude: geometry.coordinates[0],
+              };
+              
+              // Увеличиваем zoom на несколько уровней для раскрытия кластера
+              // Используем текущую позицию камеры, не меняя центр
+              const newZoom = Math.min(currentZoom + 5, 22);
+              
+              // Вычисляем новый delta на основе zoom
+              const baseDelta = 0.01;
+              const zoomFactor = Math.pow(2, currentZoom - newZoom);
+              const newDelta = baseDelta * zoomFactor;
+              
+              // Устанавливаем флаг, что происходит раскрытие кластера
+              isClusterExpandingRef.current = true;
+              
+              if (mapViewRef.current?.animateToCamera) {
+                mapViewRef.current.animateToCamera({
+                  center: currentCenter, // Используем текущую позицию камеры
+                  zoom: newZoom,
+                }, 500);
+                
+                // Сохраняем zoom и фиксируем позицию после анимации
+                setTimeout(async () => {
+                  setSavedZoom(newZoom);
+                  isClusterExpandingRef.current = false;
+                  
+                  // Получаем текущую позицию камеры и фиксируем её
+                  if (mapViewRef.current?.getCamera) {
+                    try {
+                      const camera = await mapViewRef.current.getCamera();
+                      if (camera?.center) {
+                        const newDelta = baseDelta * zoomFactor;
+                        setFixedRegion({
+                          latitude: camera.center.latitude,
+                          longitude: camera.center.longitude,
+                          latitudeDelta: newDelta,
+                          longitudeDelta: newDelta,
+                        });
+                      }
+                    } catch (error) {
+                      // Игнорируем ошибки
+                    }
+                  }
+                }, 550);
+              } else {
+                // Fallback: используем очень маленький delta с текущей позицией
+                const delta = point_count <= 3 ? 0.000003 : 0.000005;
+                mapViewRef.current?.animateToRegion(
+                    {
+                      latitude: currentCenter.latitude,
+                      longitude: currentCenter.longitude,
+                      latitudeDelta: delta,
+                      longitudeDelta: delta,
+                    },
+                    500
+                );
+                
+                // Сохраняем zoom и фиксируем позицию после анимации
+                const approximateZoom = Math.log2(0.01 / delta) + 10;
+                setTimeout(() => {
+                  setSavedZoom(approximateZoom);
+                  isClusterExpandingRef.current = false;
+                  setFixedRegion({
+                    latitude: currentCenter.latitude,
+                    longitude: currentCenter.longitude,
+                    latitudeDelta: delta,
+                    longitudeDelta: delta,
+                  });
+                }, 550);
+              }
+            } else {
+              // Если getCamera не доступен, используем очень маленький delta
+              const lat = geometry.coordinates[1];
+              const lng = geometry.coordinates[0];
+              const delta = point_count <= 3 ? 0.000003 : 0.000005;
+              mapViewRef.current?.animateToRegion(
+                  {
+                    latitude: lat,
+                    longitude: lng,
+                    latitudeDelta: delta,
+                    longitudeDelta: delta,
+                  },
+                  500
+              );
+            }
+          } catch (error) {
+            // Если произошла ошибка, используем очень маленький delta
+            const lat = geometry.coordinates[1];
+            const lng = geometry.coordinates[0];
+            const delta = point_count <= 3 ? 0.000003 : 0.000005;
+            mapViewRef.current?.animateToRegion(
+                {
+                  latitude: lat,
+                  longitude: lng,
+                  latitudeDelta: delta,
+                  longitudeDelta: delta,
+                },
+                500
+            );
+          }
         }}
       >
         <View style={styles.clusterContainer}>
@@ -459,68 +652,64 @@ export default function MapScreen() {
     if (selectedUser) {
       const userId = selectedUser.id || selectedUser.user_id;
       if (userId) {
-        // Сначала ищем пользователя в onlineUsers (они содержат актуальные данные)
+        // Ищем пользователя в onlineUsers (они содержат самые актуальные данные, обновляются каждые 3 секунды)
         const onlineUser = onlineUsers.find((u: any) => {
           const uId = u.id || u.user_id;
           return uId === userId || String(uId) === String(userId);
         });
         
-        // Затем ищем в messagesUsers для дополнения данными
-        const userIdKey = Object.keys(messagesUsers).find(id => {
-          const msgUser = messagesUsers[id];
-          return msgUser && (msgUser.id === userId || String(msgUser.id) === String(userId) || id === String(userId));
-        });
-        
-        let updatedUser = { ...selectedUser };
-        let hasChanges = false;
-        
-        // Если пользователь найден в onlineUsers, обновляем данными оттуда
+        // Если пользователь найден в onlineUsers, всегда обновляем данными оттуда (они самые актуальные)
         if (onlineUser) {
-          // Проверяем изменения в важных полях
-          const fieldsToCheck = ['image', 'name', 'age', 'sex', 'description', 'thoughts', 'is_online', 'lat', 'lng'];
-          for (const field of fieldsToCheck) {
-            if (onlineUser[field] !== selectedUser[field]) {
-              hasChanges = true;
-              break;
-            }
-          }
+          // Создаем объект с актуальными данными
+          const updatedUser = {
+            ...selectedUser,
+            ...onlineUser, // Актуальные данные из onlineUsers имеют приоритет
+            id: userId, // Сохраняем id
+            lat: onlineUser.lat || selectedUser.lat, // Сохраняем координаты
+            lng: onlineUser.lng || selectedUser.lng,
+          };
           
-          if (hasChanges) {
-            updatedUser = {
-              ...updatedUser,
-              ...onlineUser, // Обновляем данными из onlineUsers
-              id: userId, // Сохраняем id
-            };
-          }
-        }
-        
-        // Если пользователь найден в messagesUsers, дополняем/перезаписываем данными
-        if (userIdKey && messagesUsers[userIdKey]) {
-          const msgUser = messagesUsers[userIdKey];
+          // Проверяем, действительно ли данные изменились
           const fieldsToCheck = ['image', 'name', 'age', 'sex', 'description', 'thoughts', 'is_online'];
-          for (const field of fieldsToCheck) {
-            if (msgUser[field] !== updatedUser[field]) {
-              hasChanges = true;
-              break;
+          const hasChanges = fieldsToCheck.some(field => {
+            const oldValue = selectedUser[field];
+            const newValue = onlineUser[field];
+            return oldValue !== newValue;
+          });
+          
+          // Обновляем только если данные действительно изменились
+          if (hasChanges) {
+            setSelectedUser(updatedUser);
+          }
+        } else {
+          // Если пользователя нет в onlineUsers, проверяем messagesUsers
+          const userIdKey = Object.keys(messagesUsers).find(id => {
+            const msgUser = messagesUsers[id];
+            return msgUser && (msgUser.id === userId || String(msgUser.id) === String(userId) || id === String(userId));
+          });
+          
+          if (userIdKey && messagesUsers[userIdKey]) {
+            const msgUser = messagesUsers[userIdKey];
+            const fieldsToCheck = ['image', 'name', 'age', 'sex', 'description', 'thoughts', 'is_online'];
+            const hasChanges = fieldsToCheck.some(field => {
+              return msgUser[field] !== selectedUser[field];
+            });
+            
+            if (hasChanges) {
+              const updatedUser = {
+                ...selectedUser,
+                ...msgUser, // Дополняем данными из messagesUsers
+                lat: selectedUser.lat, // Сохраняем координаты
+                lng: selectedUser.lng,
+                id: userId, // Сохраняем id
+              };
+              setSelectedUser(updatedUser);
             }
           }
-          
-          if (hasChanges) {
-            updatedUser = {
-              ...updatedUser,
-              ...msgUser, // Дополняем данными из messagesUsers
-              lat: updatedUser.lat || selectedUser.lat, // Сохраняем координаты
-              lng: updatedUser.lng || selectedUser.lng,
-              id: userId, // Сохраняем id
-            };
-          }
-        }
-        
-        if (hasChanges) {
-          setSelectedUser(updatedUser);
         }
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onlineUsers, messagesUsers]);
 
   // Функция для форматирования времени из created_at
@@ -745,14 +934,38 @@ export default function MapScreen() {
         <View style={styles.content}>
           {userLat !== null && userLng !== null ? (
               <MapView
+                  key="main-map" // Стабильный key предотвращает полный перерендер при обновлении данных
                   ref={mapViewRef}
                   provider={PROVIDER_DEFAULT}
                   style={styles.map}
                   initialRegion={{
-                    latitude: userLat,
-                    longitude: userLng,
+                    latitude: userLat || 0,
+                    longitude: userLng || 0,
                     latitudeDelta: 0.01,
                     longitudeDelta: 0.01,
+                  }}
+                  region={fixedRegion || undefined}
+                  onRegionChangeComplete={(region) => {
+                    // Сохраняем позицию камеры только если это не автоматическое изменение при обновлении данных
+                    if (!isUpdatingDataRef.current && !isClusterExpandingRef.current) {
+                      currentRegionRef.current = region;
+                      isUserInteractingRef.current = true;
+                    }
+                  }}
+                  onPanDrag={() => {
+                    // Пользователь перетаскивает карту - снимаем фиксацию позиции
+                    setFixedRegion(null);
+                    setSavedZoom(null);
+                  }}
+                  onPress={() => {
+                    // Пользователь нажал на карту - снимаем фиксацию позиции
+                    setFixedRegion(null);
+                    setSavedZoom(null);
+                  }}
+                  onMarkerPress={() => {
+                    // Пользователь нажал на маркер - снимаем фиксацию позиции
+                    setFixedRegion(null);
+                    setSavedZoom(null);
                   }}
                   showsUserLocation={false}
                   showsMyLocationButton={false}
@@ -763,37 +976,57 @@ export default function MapScreen() {
                   minPoints={3}
                   edgePadding={{ top: 50, left: 50, bottom: 50, right: 50 }}
                   renderCluster={renderCluster}
+                  preserveClusterPressBehavior={true}
                   clusterColor="#4ECDC4"
                   clusterTextColor="#fff"
                   clusterFontFamily="System"
+                  onMapReady={() => {
+                    // При готовности карты сохраняем начальную позицию
+                    if (mapViewRef.current?.getCamera) {
+                      mapViewRef.current.getCamera().then((camera: any) => {
+                        if (camera?.center) {
+                          currentRegionRef.current = {
+                            latitude: camera.center.latitude,
+                            longitude: camera.center.longitude,
+                            latitudeDelta: 0.01,
+                            longitudeDelta: 0.01,
+                          };
+                        }
+                      }).catch(() => {});
+                    }
+                  }}
               >
-                <Marker
-                    coordinate={{
-                      latitude: userLat,
-                      longitude: userLng,
-                    }}
-                    onPress={() => handleMarkerPress(userData)}
-                    tracksViewChanges={false}
-                >
-                  <View style={styles.markerContainer}>
-                    {userData?.image ? (
-                        <Image
-                            source={{ uri: getImageUrl(userData.image) || '' }}
-                            style={styles.markerAvatar}
-                            contentFit="cover"
-                        />
-                    ) : (
-                        <View style={[styles.markerAvatar, styles.markerAvatarPlaceholder]}>
-                          <View style={styles.markerAvatarInner} />
-                        </View>
-                    )}
-                    {userData?.thoughts && (
-                      <Text style={styles.markerThoughts} numberOfLines={2}>
-                        {userData.thoughts}
-                      </Text>
-                    )}
-                  </View>
-                </Marker>
+                {/* Маркер текущего пользователя - используем актуальные данные из online_users */}
+                {currentUserData && userLat !== null && userLng !== null && (
+                  <Marker
+                      key={`self-${currentUserData?.thoughts || ''}-${currentUserData?.image || ''}-${currentUserData?.id || ''}`}
+                      coordinate={{
+                        latitude: userLat,
+                        longitude: userLng,
+                      }}
+                      onPress={() => handleMarkerPress(currentUserData)}
+                      tracksViewChanges={true} // TODO 1
+                  >
+                    <View style={styles.markerContainer}>
+                      {currentUserData?.image ? (
+                          <Image
+                              source={{ uri: getImageUrl(currentUserData.image) || '' }}
+                              style={styles.markerAvatar}
+                              contentFit="cover"
+                          />
+                      ) : (
+                          <View style={[styles.markerAvatar, styles.markerAvatarPlaceholder]}>
+                            <View style={styles.markerAvatarInner} />
+                          </View>
+                      )}
+                      {currentUserData?.thoughts && (
+                        <Text style={styles.markerThoughts} numberOfLines={2}>
+                          {currentUserData.thoughts}
+                        </Text>
+                      )}
+                    </View>
+                  </Marker>
+                )}
 
                 {/* Маркеры других онлайн пользователей */}
                 {onlineUsers
@@ -813,47 +1046,26 @@ export default function MapScreen() {
                     return null;
                   }
                   
-                  // Объединяем данные из onlineUsers с актуальными данными из messagesUsers
-                  // onlineUsers уже содержит все актуальные данные (age, description, name, sex, thoughts и т.д.)
-                  // messagesUsers может содержать более свежие данные, если была переписка
-                  const actualUser = (() => {
-                    // Сначала используем данные из onlineUsers как основу (они уже актуальные)
-                    let mergedUser = { ...user };
-                    
-                    // Ищем пользователя в messagesUsers по id для дополнения данными
-                    const userIdKey = Object.keys(messagesUsers).find(id => {
-                      const msgUser = messagesUsers[id];
-                      return msgUser && (msgUser.id === userId || String(msgUser.id) === String(userId) || id === String(userId));
-                    });
-                    
-                    if (userIdKey && messagesUsers[userIdKey]) {
-                      // Объединяем: данные из messagesUsers имеют приоритет для полей, которые могут обновиться
-                      // но сохраняем координаты из onlineUsers (они обновляются каждые 3 секунды)
-                      mergedUser = {
-                        ...mergedUser, // Все данные из onlineUsers (age, description, name, sex, thoughts и т.д.)
-                        ...messagesUsers[userIdKey], // Дополняем/перезаписываем данными из messagesUsers если они есть
-                        lat: user.lat, // Сохраняем координаты из onlineUsers
-                        lng: user.lng,
-                        id: user.id || user.user_id || messagesUsers[userIdKey].id, // Сохраняем id
-                      };
-                    }
-                    
-                    return mergedUser;
-                  })();
+                  // Используем актуальные данные из onlineUsers (они обновляются каждые 3 секунды)
+                  // onlineUsers содержит самые свежие данные (thoughts, image, name, age и т.д.)
+                  const actualUser = user; // onlineUsers уже содержит актуальные данные
                   
                   // Генерируем уникальный цвет для маркера на основе данных пользователя
                   const markerColor = getUserMarkerColor(actualUser);
                   
+                  // Создаем ключ, который включает изменяемые поля для перерисовки маркера при изменении
+                  const markerKey = `${userId}-${actualUser.thoughts || ''}-${actualUser.image || ''}-${actualUser.name || ''}`;
+                  
                   return (
                       <Marker
-                          key={userId}
+                          key={markerKey}
                           identifier={String(userId)}
                           coordinate={{
                             latitude: userLat,
                             longitude: userLng,
                           }}
                           onPress={() => handleMarkerPress(actualUser)}
-                          tracksViewChanges={false}
+                          tracksViewChanges={true}
                       >
                           <View style={styles.markerContainer}>
                               {actualUser.image ? (
