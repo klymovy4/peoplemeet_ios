@@ -524,19 +524,16 @@ export default function MapScreen() {
           longitude: geometry.coordinates[0],
         }}
         onPress={async () => {
-          // Получаем текущую позицию камеры и увеличиваем только zoom
-          // Это сохранит позицию камеры и не будет отводить её назад
+          // Приближаем камеру к точке кластера
+          const clusterLat = geometry.coordinates[1];
+          const clusterLng = geometry.coordinates[0];
+          
           try {
             if (mapViewRef.current?.getCamera) {
               const camera = await mapViewRef.current.getCamera();
               const currentZoom = camera?.zoom || 10;
-              const currentCenter = camera?.center || {
-                latitude: geometry.coordinates[1],
-                longitude: geometry.coordinates[0],
-              };
               
               // Увеличиваем zoom на несколько уровней для раскрытия кластера
-              // Используем текущую позицию камеры, не меняя центр
               const newZoom = Math.min(currentZoom + 5, 22);
               
               // Вычисляем новый delta на основе zoom
@@ -549,40 +546,31 @@ export default function MapScreen() {
               
               if (mapViewRef.current?.animateToCamera) {
                 mapViewRef.current.animateToCamera({
-                  center: currentCenter, // Используем текущую позицию камеры
+                  center: {
+                    latitude: clusterLat,
+                    longitude: clusterLng,
+                  },
                   zoom: newZoom,
                 }, 500);
                 
                 // Сохраняем zoom и фиксируем позицию после анимации
-                setTimeout(async () => {
+                setTimeout(() => {
                   setSavedZoom(newZoom);
                   isClusterExpandingRef.current = false;
-                  
-                  // Получаем текущую позицию камеры и фиксируем её
-                  if (mapViewRef.current?.getCamera) {
-                    try {
-                      const camera = await mapViewRef.current.getCamera();
-                      if (camera?.center) {
-                        const newDelta = baseDelta * zoomFactor;
-                        setFixedRegion({
-                          latitude: camera.center.latitude,
-                          longitude: camera.center.longitude,
-                          latitudeDelta: newDelta,
-                          longitudeDelta: newDelta,
-                        });
-                      }
-                    } catch (error) {
-                      // Игнорируем ошибки
-                    }
-                  }
+                  setFixedRegion({
+                    latitude: clusterLat,
+                    longitude: clusterLng,
+                    latitudeDelta: newDelta,
+                    longitudeDelta: newDelta,
+                  });
                 }, 550);
               } else {
-                // Fallback: используем очень маленький delta с текущей позицией
+                // Fallback: используем очень маленький delta с координатами кластера
                 const delta = point_count <= 3 ? 0.000003 : 0.000005;
                 mapViewRef.current?.animateToRegion(
                     {
-                      latitude: currentCenter.latitude,
-                      longitude: currentCenter.longitude,
+                      latitude: clusterLat,
+                      longitude: clusterLng,
                       latitudeDelta: delta,
                       longitudeDelta: delta,
                     },
@@ -595,8 +583,8 @@ export default function MapScreen() {
                   setSavedZoom(approximateZoom);
                   isClusterExpandingRef.current = false;
                   setFixedRegion({
-                    latitude: currentCenter.latitude,
-                    longitude: currentCenter.longitude,
+                    latitude: clusterLat,
+                    longitude: clusterLng,
                     latitudeDelta: delta,
                     longitudeDelta: delta,
                   });
@@ -604,33 +592,59 @@ export default function MapScreen() {
               }
             } else {
               // Если getCamera не доступен, используем очень маленький delta
-              const lat = geometry.coordinates[1];
-              const lng = geometry.coordinates[0];
               const delta = point_count <= 3 ? 0.000003 : 0.000005;
+              
+              isClusterExpandingRef.current = true;
               mapViewRef.current?.animateToRegion(
                   {
-                    latitude: lat,
-                    longitude: lng,
+                    latitude: clusterLat,
+                    longitude: clusterLng,
                     latitudeDelta: delta,
                     longitudeDelta: delta,
                   },
                   500
               );
+              
+              // Сохраняем zoom и фиксируем позицию после анимации
+              const approximateZoom = Math.log2(0.01 / delta) + 10;
+              setTimeout(() => {
+                setSavedZoom(approximateZoom);
+                isClusterExpandingRef.current = false;
+                setFixedRegion({
+                  latitude: clusterLat,
+                  longitude: clusterLng,
+                  latitudeDelta: delta,
+                  longitudeDelta: delta,
+                });
+              }, 550);
             }
           } catch (error) {
             // Если произошла ошибка, используем очень маленький delta
-            const lat = geometry.coordinates[1];
-            const lng = geometry.coordinates[0];
             const delta = point_count <= 3 ? 0.000003 : 0.000005;
+            
+            isClusterExpandingRef.current = true;
             mapViewRef.current?.animateToRegion(
                 {
-                  latitude: lat,
-                  longitude: lng,
+                  latitude: clusterLat,
+                  longitude: clusterLng,
                   latitudeDelta: delta,
                   longitudeDelta: delta,
                 },
                 500
             );
+            
+            // Сохраняем zoom и фиксируем позицию после анимации
+            const approximateZoom = Math.log2(0.01 / delta) + 10;
+            setTimeout(() => {
+              setSavedZoom(approximateZoom);
+              isClusterExpandingRef.current = false;
+              setFixedRegion({
+                latitude: clusterLat,
+                longitude: clusterLng,
+                latitudeDelta: delta,
+                longitudeDelta: delta,
+              });
+            }, 550);
           }
         }}
       >
