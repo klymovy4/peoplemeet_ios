@@ -8,7 +8,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View, Text, Modal, TouchableWithoutFeedback, ScrollView, TextInput, Alert } from 'react-native';
 import { useSharedValue, withSpring } from 'react-native-reanimated';
-import { Marker, PROVIDER_DEFAULT, MapView as RNMapView } from 'react-native-maps';
+import { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import MapView from 'react-native-map-clustering';
 import MessagesModal from '@/components/MessagesModal';
 
@@ -32,7 +32,7 @@ export default function MapScreen() {
   const lastMessageCountRef = useRef<number>(0); // Храним количество сообщений для проверки новых
   const previousUnreadCountRef = useRef<number>(0); // Храним предыдущее количество непрочитанных сообщений
   const previousMessagesRef = useRef<any>({}); // Храним предыдущие сообщения для определения новых
-  const mapViewRef = useRef<RNMapView>(null);
+  const mapViewRef = useRef<any>(null);
   const params = useLocalSearchParams();
 
   useEffect(() => {
@@ -78,18 +78,46 @@ export default function MapScreen() {
         usersArray = users.data;
       }
       
-      // Фильтруем текущего пользователя из списка
-      const filteredUsers = usersArray.filter((user: any) => {
-        const userId = user.id || user.user_id;
-        return userId !== currentUserId;
-      });
-      
-      // console.log('MapScreen: Filtered online users:', filteredUsers.length);
-      // console.log('MapScreen: Users data:', filteredUsers.map(u => ({ id: u.id || u.user_id, name: u.name, lat: u.lat, lng: u.lng })));
+      // Фильтруем текущего пользователя из списка и проверяем валидность данных
+      const filteredUsers = usersArray
+        .filter((user: any) => {
+          const userId = user.id || user.user_id;
+          // Проверяем, что пользователь не текущий и данные валидны
+          if (userId === currentUserId) return false;
+          // Проверяем наличие координат
+          const lat = parseCoordinate(user.lat);
+          const lng = parseCoordinate(user.lng);
+          return lat !== null && lng !== null;
+        })
+        .map((user: any) => ({
+          ...user,
+          id: user.id || user.user_id,
+          // Убеждаемся, что координаты валидны
+          lat: parseCoordinate(user.lat),
+          lng: parseCoordinate(user.lng),
+        }));
 
-      // Всегда обновляем состояние, даже если количество не изменилось
-      // Это гарантирует актуальность координат и других данных
-      setOnlineUsers(filteredUsers);
+      // Обновляем состояние только если данные изменились
+      // Это предотвращает ненужные перерендеры и краши
+      // Используем небольшую задержку для предотвращения крашей при быстрых обновлениях
+      setTimeout(() => {
+        setOnlineUsers((prevUsers) => {
+          // Проверяем, действительно ли данные изменились
+          if (prevUsers.length === filteredUsers.length) {
+            const prevIds = new Set(prevUsers.map((u: any) => String(u.id || u.user_id)));
+            const newIds = new Set(filteredUsers.map((u: any) => String(u.id || u.user_id)));
+            const idsChanged = prevIds.size !== newIds.size || 
+              [...prevIds].some(id => !newIds.has(id));
+            
+            if (!idsChanged) {
+              // Данные не изменились, возвращаем предыдущее состояние
+              return prevUsers;
+            }
+          }
+          
+          return filteredUsers;
+        });
+      }, 50);
     });
 
     // Очищаем callback при размонтировании (дублирующий cleanup уже есть в первом useEffect)
@@ -380,6 +408,9 @@ export default function MapScreen() {
     const { id, geometry, properties } = cluster;
     const { cluster_id, point_count } = properties;
     
+    // Для маленьких кластеров (2-3 точки) используем более агрессивное приближение
+    const isSmallCluster = point_count <= 3;
+    
     return (
       <Marker
         key={`cluster-${cluster_id}`}
@@ -388,28 +419,26 @@ export default function MapScreen() {
           longitude: geometry.coordinates[0],
         }}
         onPress={() => {
-          // При нажатии на кластер приближаемся максимально, чтобы увидеть отдельные маркеры
-          // Используем очень маленькие delta для максимального приближения
-          const region = {
-            latitude: geometry.coordinates[1],
-            longitude: geometry.coordinates[0],
-            latitudeDelta: 0.0002, // Максимальное приближение
-            longitudeDelta: 0.0002, // Максимальное приближение
-          };
-          
-          // Сначала быстро приближаемся
-          mapViewRef.current?.animateToRegion(region, 400);
-          
-          // Затем еще больше приближаемся для гарантированного раскрытия кластера
-          setTimeout(() => {
-            const tighterRegion = {
-              latitude: geometry.coordinates[1],
-              longitude: geometry.coordinates[0],
-              latitudeDelta: 0.0001,
-              longitudeDelta: 0.0001,
-            };
-            mapViewRef.current?.animateToRegion(tighterRegion, 400);
-          }, 500);
+          const lat = geometry.coordinates[1];
+          const lng = geometry.coordinates[0];
+
+          // 🔥 Для кластеров из 2 точек нужен ОЧЕНЬ маленький delta
+          const delta =
+              point_count === 2
+                  ? 0.0000005
+                  : point_count === 3
+                      ? 0.000002
+                      : 0.00001;
+
+          mapViewRef.current?.animateToRegion(
+              {
+                latitude: lat,
+                longitude: lng,
+                latitudeDelta: delta,
+                longitudeDelta: delta,
+              },
+              500
+          );
         }}
       >
         <View style={styles.clusterContainer}>
@@ -727,11 +756,11 @@ export default function MapScreen() {
                   }}
                   showsUserLocation={false}
                   showsMyLocationButton={false}
-                  radius={20}
+                  radius={10}
                   extent={512}
-                  minZoom={10}
-                  maxZoom={20}
-                  minPoints={2}
+                  minZoom={5}
+                  maxZoom={22}
+                  minPoints={3}
                   edgePadding={{ top: 50, left: 50, bottom: 50, right: 50 }}
                   renderCluster={renderCluster}
                   clusterColor="#4ECDC4"
@@ -767,12 +796,20 @@ export default function MapScreen() {
                 </Marker>
 
                 {/* Маркеры других онлайн пользователей */}
-                {onlineUsers.map((user: any) => {
+                {onlineUsers
+                  .filter((user: any) => {
+                    // Фильтруем только пользователей с валидными координатами
+                    const lat = parseCoordinate(user.lat);
+                    const lng = parseCoordinate(user.lng);
+                    return lat !== null && lng !== null && user.id !== undefined;
+                  })
+                  .map((user: any) => {
                   const userLat = parseCoordinate(user.lat);
                   const userLng = parseCoordinate(user.lng);
-                  const userId = user.id || user.user_id || `user-${user.lat}-${user.lng}`;
+                  const userId = String(user.id || user.user_id || `user-${user.lat}-${user.lng}`);
                   
-                  if (userLat === null || userLng === null) {
+                  // Дополнительная проверка на валидность координат
+                  if (userLat === null || userLng === null || !userId) {
                     return null;
                   }
                   
@@ -974,7 +1011,6 @@ export default function MapScreen() {
   );
 }
 
-// @ts-expect-error - TypeScript has issues with StyleSheet types when using react-native-map-clustering
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1081,7 +1117,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#333',
     maxWidth: 150,
-    width: 'fit-content',
     minWidth: 150,
     height: 'auto',
     textAlign: 'left',
