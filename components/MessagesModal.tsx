@@ -146,23 +146,23 @@ export default function MessagesModal({
     if (!targetUserId) {
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: 'Пользователь не выбран',
+        text1: 'Error',
+        text2: 'No user selected',
       });
       return;
     }
 
     // Показываем подтверждение перед удалением
     Alert.alert(
-      'Удалить переписку',
-      'Вы уверены, что хотите удалить переписку с этим пользователем? Это действие нельзя отменить.',
+      'Delete conversation',
+      'Are you sure you want to delete the conversation with this user? This action cannot be undone.',
       [
         {
-          text: 'Отмена',
+          text: 'Cancel',
           style: 'cancel',
         },
         {
-          text: 'Удалить',
+          text: 'Delete',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -183,8 +183,8 @@ export default function MessagesModal({
               if (result.status === 'success') {
                 Toast.show({
                   type: 'success',
-                  text1: 'Успешно',
-                  text2: 'Переписка удалена',
+                  text1: 'Success',
+                  text2: 'Conversation deleted',
                 });
                 
                 // Закрываем модальное окно сообщений
@@ -201,16 +201,16 @@ export default function MessagesModal({
               } else {
                 Toast.show({
                   type: 'error',
-                  text1: 'Ошибка',
-                  text2: result?.data?.message || 'Не удалось удалить переписку',
+                  text1: 'Error',
+                  text2: result?.data?.message || 'Failed to delete conversation',
                 });
               }
             } catch (error) {
               console.error('Error removing conversation:', error);
               Toast.show({
                 type: 'error',
-                text1: 'Ошибка',
-                text2: 'Не удалось удалить переписку',
+                text1: 'Error',
+                text2: 'Failed to delete conversation',
               });
             } finally {
               if (removingConversation === undefined) {

@@ -44,14 +44,14 @@ export default function RecoverPasswordScreen() {
         setIsStartChangePassword(true);
         Toast.show({
           type: 'success',
-          text1: 'Успешно',
-          text2: 'Код подтвержден',
+          text1: 'Success',
+          text2: 'Code confirmed',
         });
       } else {
         Toast.show({
           type: 'error',
-          text1: 'Ошибка',
-          text2: response.data?.message || 'Неверный код',
+          text1: 'Error',
+          text2: response.data?.message || 'Invalid code',
         });
         setFormCode('');
         setIsStartChangePassword(false);
@@ -65,8 +65,8 @@ export default function RecoverPasswordScreen() {
     if (!email) {
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: 'Введите email',
+        text1: 'Error',
+        text2: 'Enter your email',
       });
       return;
     }
@@ -78,14 +78,14 @@ export default function RecoverPasswordScreen() {
       setIsRestoreCode(true);
       Toast.show({
         type: 'info',
-        text1: 'Код отправлен',
-        text2: 'Проверьте email. Также проверьте папку спам. Это может занять несколько минут',
+        text1: 'Code sent',
+        text2: 'Check your email, including the spam folder. This may take a few minutes',
       });
     } else {
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: response.data?.message || 'Не удалось отправить код',
+        text1: 'Error',
+        text2: response.data?.message || 'Failed to send code',
       });
     }
 
@@ -96,8 +96,8 @@ export default function RecoverPasswordScreen() {
     if (newPassword !== newConfirmPassword) {
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: 'Пароли не совпадают',
+        text1: 'Error',
+        text2: 'Passwords do not match',
       });
       return;
     }
@@ -105,8 +105,8 @@ export default function RecoverPasswordScreen() {
     if (!newPassword || !newConfirmPassword) {
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: 'Заполните все поля',
+        text1: 'Error',
+        text2: 'Please fill in all fields',
       });
       return;
     }
@@ -117,8 +117,8 @@ export default function RecoverPasswordScreen() {
     if (response.status === 'success') {
       Toast.show({
         type: 'success',
-        text1: 'Успешно',
-        text2: 'Пароль успешно изменен',
+        text1: 'Success',
+        text2: 'Password changed successfully',
       });
       
       // Переход на страницу логина с заполненным email
@@ -129,8 +129,8 @@ export default function RecoverPasswordScreen() {
     } else {
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: response.data?.message || 'Не удалось изменить пароль',
+        text1: 'Error',
+        text2: response.data?.message || 'Failed to change password',
       });
     }
 

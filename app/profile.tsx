@@ -208,8 +208,8 @@ export default function ProfileScreen() {
     if (!token) {
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: 'Требуется авторизация',
+        text1: 'Error',
+        text2: 'Authentication required',
       });
       router.replace('/');
       return;
@@ -243,8 +243,8 @@ export default function ProfileScreen() {
     } else {
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: result.data?.message || 'Не удалось загрузить данные профиля',
+        text1: 'Error',
+        text2: result.data?.message || 'Failed to load profile data',
       });
     }
 
@@ -282,8 +282,8 @@ export default function ProfileScreen() {
       await removeToken();
       Toast.show({
         type: 'success',
-        text1: 'Выход выполнен',
-        text2: 'Вы успешно вышли из системы',
+        text1: 'Logged out',
+        text2: 'You have been logged out',
       });
       router.replace('/');
     } catch (error) {
@@ -301,8 +301,8 @@ export default function ProfileScreen() {
       if (status !== 'granted') {
         Toast.show({
           type: 'error',
-          text1: 'Ошибка',
-          text2: 'Необходимо разрешение на доступ к фотографиям',
+          text1: 'Error',
+          text2: 'Photo library permission is required',
         });
         return;
       }
@@ -322,8 +322,8 @@ export default function ProfileScreen() {
       console.error('Error picking image:', error);
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: 'Не удалось выбрать фото',
+        text1: 'Error',
+        text2: 'Failed to select photo',
       });
     }
   };
@@ -366,8 +366,8 @@ export default function ProfileScreen() {
       if (!token) {
         Toast.show({
           type: 'error',
-          text1: 'Ошибка',
-          text2: 'Требуется авторизация',
+          text1: 'Error',
+          text2: 'Authentication required',
         });
         return;
       }
@@ -383,8 +383,8 @@ export default function ProfileScreen() {
       if (response.status === 'success') {
         Toast.show({
           type: 'success',
-          text1: 'Успешно',
-          text2: response?.data?.message || 'Фото загружено',
+          text1: 'Success',
+          text2: response?.data?.message || 'Photo uploaded',
         });
 
         // Обновляем данные пользователя
@@ -396,8 +396,8 @@ export default function ProfileScreen() {
       } else {
         Toast.show({
           type: 'error',
-          text1: 'Ошибка',
-          text2: response?.data?.message || 'Не удалось загрузить фото',
+          text1: 'Error',
+          text2: response?.data?.message || 'Failed to upload photo',
         });
       }
 
@@ -407,8 +407,8 @@ export default function ProfileScreen() {
       console.error('Error saving image:', error);
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: 'Не удалось обработать фото',
+        text1: 'Error',
+        text2: 'Failed to process photo',
       });
     } finally {
       setUploading(false);
@@ -430,8 +430,8 @@ export default function ProfileScreen() {
       if (!token) {
         Toast.show({
           type: 'error',
-          text1: 'Ошибка',
-          text2: 'Требуется авторизация',
+          text1: 'Error',
+          text2: 'Authentication required',
         });
         return;
       }
@@ -451,8 +451,8 @@ export default function ProfileScreen() {
           disableUsersOnlinePolling(); // Останавливаем запросы онлайн-пользователей
           Toast.show({
             type: 'info',
-            text1: 'Оффлайн',
-            text2: 'Вы теперь оффлайн',
+            text1: 'Offline',
+            text2: 'You are now offline',
           });
 
           // Обновляем данные пользователя
@@ -464,8 +464,8 @@ export default function ProfileScreen() {
         } else {
           Toast.show({
             type: 'error',
-            text1: 'Ошибка',
-            text2: response?.data?.message || 'Не удалось переключиться на оффлайн',
+            text1: 'Error',
+            text2: response?.data?.message || 'Failed to go offline',
           });
         }
       } else {
@@ -473,8 +473,8 @@ export default function ProfileScreen() {
         if (!userData?.image) {
           Toast.show({
             type: 'error',
-            text1: 'Ошибка',
-            text2: 'Необходимо загрузить фото профиля',
+            text1: 'Error',
+            text2: 'A profile photo is required',
           });
           return;
         }
@@ -482,8 +482,8 @@ export default function ProfileScreen() {
         if (!name || name.trim().length === 0) {
           Toast.show({
             type: 'error',
-            text1: 'Ошибка',
-            text2: 'Необходимо указать имя',
+            text1: 'Error',
+            text2: 'Name is required',
           });
           return;
         }
@@ -491,8 +491,8 @@ export default function ProfileScreen() {
         if (!age || age.trim().length === 0) {
           Toast.show({
             type: 'error',
-            text1: 'Ошибка',
-            text2: 'Необходимо указать возраст',
+            text1: 'Error',
+            text2: 'Age is required',
           });
           return;
         }
@@ -501,8 +501,8 @@ export default function ProfileScreen() {
         if (isNaN(ageNum) || ageNum < 18 || ageNum > 90) {
           Toast.show({
             type: 'error',
-            text1: 'Ошибка',
-            text2: 'Возраст должен быть от 18 до 90 лет',
+            text1: 'Error',
+            text2: 'Age must be between 18 and 90',
           });
           return;
         }
@@ -510,8 +510,8 @@ export default function ProfileScreen() {
         if (!sex || sex.trim().length === 0) {
           Toast.show({
             type: 'error',
-            text1: 'Ошибка',
-            text2: 'Необходимо выбрать пол',
+            text1: 'Error',
+            text2: 'Please select your gender',
           });
           return;
         }
@@ -519,8 +519,8 @@ export default function ProfileScreen() {
         if (!thoughts || thoughts.trim().length === 0) {
           Toast.show({
             type: 'error',
-            text1: 'Ошибка',
-            text2: 'Необходимо указать мысли',
+            text1: 'Error',
+            text2: 'Please share your thoughts',
           });
           return;
         }
@@ -530,8 +530,8 @@ export default function ProfileScreen() {
         if (status !== 'granted') {
           Toast.show({
             type: 'error',
-            text1: 'Ошибка',
-            text2: 'Необходимо разрешение на доступ к геолокации',
+            text1: 'Error',
+            text2: 'Location permission is required',
           });
           return;
         }
@@ -553,8 +553,8 @@ export default function ProfileScreen() {
           enableUsersOnlinePolling(); // Возобновляем запросы онлайн-пользователей
           Toast.show({
             type: 'success',
-            text1: 'Онлайн',
-            text2: 'Вы теперь онлайн',
+            text1: 'Online',
+            text2: 'You are now online',
           });
 
           // Обновляем данные пользователя
@@ -569,8 +569,8 @@ export default function ProfileScreen() {
         } else {
           Toast.show({
             type: 'error',
-            text1: 'Ошибка',
-            text2: response?.data?.message || 'Не удалось переключиться на онлайн',
+            text1: 'Error',
+            text2: response?.data?.message || 'Failed to go online',
           });
         }
       }
@@ -578,8 +578,8 @@ export default function ProfileScreen() {
       console.error('Error toggling online status:', error);
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: 'Не удалось изменить статус',
+        text1: 'Error',
+        text2: 'Failed to change status',
       });
     } finally {
       setTogglingOnline(false);
@@ -620,8 +620,8 @@ export default function ProfileScreen() {
     if (!name || name.trim().length === 0) {
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: 'Имя обязательно для заполнения',
+        text1: 'Error',
+        text2: 'Name is required',
       });
       return;
     }
@@ -630,8 +630,8 @@ export default function ProfileScreen() {
     if (!age || age.trim().length === 0) {
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: 'Возраст обязателен для заполнения',
+        text1: 'Error',
+        text2: 'Age is required',
       });
       return;
     }
@@ -640,8 +640,8 @@ export default function ProfileScreen() {
     if (isNaN(ageNum) || ageNum < 18 || ageNum > 90) {
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: 'Возраст должен быть от 18 до 90 лет',
+        text1: 'Error',
+        text2: 'Age must be between 18 and 90',
       });
       return;
     }
@@ -650,8 +650,8 @@ export default function ProfileScreen() {
     if (!sex || sex.trim().length === 0) {
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: 'Пол должен быть выбран',
+        text1: 'Error',
+        text2: 'Please select your gender',
       });
       return;
     }
@@ -660,8 +660,8 @@ export default function ProfileScreen() {
     if (!description || description.trim().length === 0) {
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: 'Описание обязательно для заполнения',
+        text1: 'Error',
+        text2: 'Description is required',
       });
       return;
     }
@@ -669,8 +669,8 @@ export default function ProfileScreen() {
     if (description.trim().length < 10) {
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: 'Описание должно содержать минимум 10 символов',
+        text1: 'Error',
+        text2: 'Description must be at least 10 characters',
       });
       return;
     }
@@ -681,8 +681,8 @@ export default function ProfileScreen() {
       if (!token) {
         Toast.show({
           type: 'error',
-          text1: 'Ошибка',
-          text2: 'Требуется авторизация',
+          text1: 'Error',
+          text2: 'Authentication required',
         });
         return;
       }
@@ -702,8 +702,8 @@ export default function ProfileScreen() {
       if (response.status === 'success') {
         Toast.show({
           type: 'success',
-          text1: 'Успешно',
-          text2: response?.data?.message || 'Профиль обновлен',
+          text1: 'Success',
+          text2: response?.data?.message || 'Profile updated',
         });
 
         // Обновляем данные пользователя
@@ -715,16 +715,16 @@ export default function ProfileScreen() {
       } else {
         Toast.show({
           type: 'error',
-          text1: 'Ошибка',
-          text2: response?.data?.message || 'Не удалось обновить профиль',
+          text1: 'Error',
+          text2: response?.data?.message || 'Failed to update profile',
         });
       }
     } catch (error) {
       console.error('Error saving profile:', error);
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: 'Не удалось сохранить изменения',
+        text1: 'Error',
+        text2: 'Failed to save changes',
       });
     } finally {
       setSaving(false);
@@ -830,8 +830,8 @@ export default function ProfileScreen() {
             } else {
               Toast.show({
                 type: 'info',
-                text1: 'Информация',
-                text2: 'Необходимо быть онлайн для просмотра карты',
+                text1: 'Info',
+                text2: 'You must be online to view the map',
               });
             }
           }}
@@ -908,7 +908,7 @@ export default function ProfileScreen() {
                   <Text style={styles.infoLabel}>Статус:</Text>
                   <View style={styles.switchContainer}>
                     <Text style={styles.switchLabel}>
-                      {isOnline ? 'Онлайн' : 'Оффлайн'}
+                      {isOnline ? 'Online' : 'Offline'}
                     </Text>
                     <Switch
                         value={isOnline}

@@ -1,380 +1,141 @@
-const baseApi = 'https://peoplemeet.com.ua';
+// Базовый адрес API. Задаётся через переменную окружения EXPO_PUBLIC_API_URL
+// (см. .env.example); при её отсутствии используется продакшн-адрес.
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://peoplemeet.com.ua';
 
-export const loginUser = async (data: { email: string; password: string }) => {
-  try {
-    const response = await fetch(`${baseApi}/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
+export type ApiResult =
+  | { status: 'success'; data: any }
+  | { status: 'failed'; data?: any; error?: unknown };
 
-    const responseData = await response.json();
+// Обработчик истёкшей/недействительной сессии (401). Регистрируется на старте
+// приложения (см. services/session.ts), чтобы сетевой слой не зависел от роутера.
+let onUnauthorized: (() => void) | null = null;
 
-    if (!response.ok) {
-      return { status: 'failed', data: responseData };
-    }
-
-    return { status: 'success', data: responseData };
-  } catch (error) {
-    console.error('Error:', error);
-    return { status: 'failed', error: error };
-  }
+export const setUnauthorizedHandler = (handler: (() => void) | null) => {
+  onUnauthorized = handler;
 };
 
-export const signUpUser = async (data: { email: string; password: string }) => {
-  try {
-    const response = await fetch(`${baseApi}/signup`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
+// Есть ли в теле запроса токен — только такие запросы могут дать «session expired».
+// (login/signup/recovery отправляют email/пароль, а не токен.)
+const bodyHasToken = (body: unknown): boolean =>
+  !!body && typeof body === 'object' && 'token' in (body as Record<string, unknown>);
 
-    const responseData = await response.json();
+/**
+ * Единая точка отправки JSON-запросов к API.
+ * Возвращает признак успеха HTTP-ответа и разобранное тело.
+ * При 401 на авторизованном запросе запускает обработчик разлогина.
+ */
+async function apiPost(path: string, body: unknown): Promise<{ ok: boolean; data: any }> {
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
 
-    if (!response.ok) {
-      return { status: 'failed', data: responseData };
-    }
-
-    return { status: 'success', data: responseData };
-  } catch (error) {
-    console.error('Error:', error);
-    return { status: 'failed', error: error };
+  if (response.status === 401 && bodyHasToken(body)) {
+    onUnauthorized?.();
   }
-};
 
-export const getRecoverCode = async (email: string) => {
-  const data = {
-    email,
-  };
+  const data = await response.json();
+  return { ok: response.ok, data };
+}
 
+/**
+ * Обёртка над apiPost с единым форматом результата { status, data }
+ * и централизованной обработкой сетевых ошибок.
+ */
+async function request(path: string, body: unknown): Promise<ApiResult> {
   try {
-    const response = await fetch(`${baseApi}/send_recovery_code`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
-
-    const responseData = await response.json();
-
-    if (!response.ok) {
-      return { status: 'failed', data: responseData };
-    }
-
-    return { status: 'success', data: responseData };
+    const { ok, data } = await apiPost(path, body);
+    return ok ? { status: 'success', data } : { status: 'failed', data };
   } catch (error) {
-    console.error('Error:', error);
-    return { status: 'failed', error: error };
+    console.error('API error:', path, error);
+    return { status: 'failed', error };
   }
-};
+}
 
-export const checkRecoveryCode = async (email: string, recoveryCode: string) => {
-  const data = {
-    email,
-    recoveryCode,
-  };
+export const loginUser = (data: { email: string; password: string }) =>
+  request('/login', data);
 
-  try {
-    const response = await fetch(`${baseApi}/check_recovery_code`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
+export const signUpUser = (data: { email: string; password: string }) =>
+  request('/signup', data);
 
-    const responseData = await response.json();
+export const getRecoverCode = (email: string) =>
+  request('/send_recovery_code', { email });
 
-    if (!response.ok) {
-      return { status: 'failed', data: responseData };
-    }
+export const checkRecoveryCode = (email: string, recoveryCode: string) =>
+  request('/check_recovery_code', { email, recoveryCode });
 
-    return { status: 'success', data: responseData };
-  } catch (error) {
-    console.error('Error:', error);
-    return { status: 'failed', error: error };
-  }
-};
+export const changePassword = (email: string, recoveryCode: string, newPassword: string) =>
+  request('/change_password', { email, recoveryCode, password: newPassword });
 
-export const changePassword = async (email: string, recoveryCode: string, newPassword: string) => {
-  const data = {
-    email,
-    recoveryCode,
-    password: newPassword,
-  };
+export const getSelf = (token: string) => request('/self', { token });
 
-  try {
-    const response = await fetch(`${baseApi}/change_password`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
+export const editProfile = (data: any) => request('/profile', data);
 
-    const responseData = await response.json();
+export const getOnline = (data: any) => request('/online', data);
 
-    if (!response.ok) {
-      return { status: 'failed', data: responseData };
-    }
+export const getMessages = (token: string) => request('/get_messages', { token });
 
-    return { status: 'success', data: responseData };
-  } catch (error) {
-    console.error('Error:', error);
-    return { status: 'failed', error: error };
-  }
-};
+export const readMessages = (token: string, chat_partner_id: number) =>
+  request('/read_messages', { token, chat_partner_id });
 
-export const getSelf = async (token: string) => {
-  const data = {
-    token,
-  };
+export const sendMessage = (token: string, receiver_id: number, message_text: string) =>
+  request('/send_message', { token, receiver_id, message_text });
 
-  try {
-    const response = await fetch(`${baseApi}/self`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
+export const removeConversation = (token: string, chat_partner_id: number) =>
+  request('/remove_conversation', { token, chat_partner_id });
 
-    const responseData = await response.json();
-
-    if (!response.ok) {
-      return { status: 'failed', data: responseData };
-    }
-
-    return { status: 'success', data: responseData };
-  } catch (error) {
-    console.error('Error:', error);
-    return { status: 'failed', error: error };
-  }
-};
-
-export const uploadAvatar = async (file: File | { uri: string; type: string; name: string }, token: string) => {
+/**
+ * Загрузка аватара. Использует multipart/form-data, поэтому не через apiPost:
+ * в React Native файл передаётся объектом { uri, type, name }, в web — File.
+ */
+export const uploadAvatar = async (
+  file: File | { uri: string; type: string; name: string },
+  token: string,
+): Promise<ApiResult> => {
   const formData = new FormData();
-  
-  // Для React Native используем объект с uri, для web - File
+
   if (file instanceof File) {
-    formData.append("photo", file);
+    formData.append('photo', file);
   } else {
-    // Для React Native
-    formData.append("photo", {
+    formData.append('photo', {
       uri: file.uri,
       type: file.type || 'image/jpeg',
       name: file.name || 'avatar.jpg',
     } as any);
   }
-  
-  formData.append("token", token);
+
+  formData.append('token', token);
 
   try {
-    const response = await fetch(`${baseApi}/upload`, {
+    const response = await fetch(`${BASE_URL}/upload`, {
       method: 'POST',
       body: formData,
     });
 
-    const responseData = await response.json();
-
-    if (!response.ok) {
-      return { status: 'failed', data: responseData };
-    }
-
-    return { status: 'success', data: responseData };
+    const data = await response.json();
+    return response.ok ? { status: 'success', data } : { status: 'failed', data };
   } catch (error) {
-    console.error('Error:', error);
-    return { status: 'failed', error: error };
+    console.error('API error: /upload', error);
+    return { status: 'failed', error };
   }
 };
 
-export const editProfile = async (data: any) => {
+/**
+ * Список онлайн-пользователей. Возвращает сырой ответ сервера
+ * (формат разбирается на стороне экрана карты) или null при ошибке.
+ */
+export const getUsersOnline = async (token: string): Promise<any | null> => {
   try {
-    const response = await fetch(`${baseApi}/profile`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
-
-    const responseData = await response.json();
-
-    if (!response.ok) {
-      return { status: 'failed', data: responseData };
+    const { ok, data } = await apiPost('/online_users', { token });
+    if (!ok) {
+      throw new Error(`HTTP error! status from /online_users`);
     }
-
-    return { status: 'success', data: responseData };
-  } catch (error) {
-    console.error('Error:', error);
-    return { status: 'failed', error: error };
-  }
-};
-
-export const getOnline = async (data: any) => {
-  try {
-    const response = await fetch(`${baseApi}/online`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
-
-    const responseData = await response.json();
-
-    if (!response.ok) {
-      return { status: 'failed', data: responseData };
-    }
-
-    return { status: 'success', data: responseData };
-  } catch (error) {
-    console.error('Error:', error);
-    return { status: 'failed', error: error };
-  }
-};
-
-export const getUsersOnline = async (token: string) => {
-  const data = {
-    token,
-  };
-
-  try {
-    const response = await fetch(`${baseApi}/online_users`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const json = await response.json();
-    console.log('Users online data:', json);
-    return json;
+    return data;
   } catch (err) {
     console.error('Error fetching online users:', err);
     return null;
   }
 };
-
-export const getMessages = async (token: string) => {
-  const data = {
-    token
-  };
-
-  try {
-    const response = await fetch(`${baseApi}/get_messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    })
-
-    const responseData = await response.json();
-    if (!response.ok) {
-      return {status: 'failed', data: responseData};
-    }
-
-    console.log('get Messages', responseData)
-    return {status: 'success', data: responseData};
-  } catch (error) {
-    console.error('Error:', error);
-    return {status: 'failed', error: error};
-  }
-};
-
-export const readMessages = async (token: string, chat_partner_id: number) => {
-  const data = {
-    token,
-    chat_partner_id
-  };
-
-  try {
-    const response = await fetch(`${baseApi}/read_messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
-
-    const responseData = await response.json();
-
-    if (!response.ok) {
-      return {status: 'failed', data: responseData};
-    }
-
-    return {status: 'success', data: responseData};
-  } catch (error) {
-    console.error('Error:', error);
-    return {status: 'failed', error: error};
-  }
-};
-
-export const sendMessage = async (token: string, receiver_id: number, message_text: string) => {
-  const data = {
-    token,
-    receiver_id,
-    message_text
-  };
-
-  try {
-    const response = await fetch(`${baseApi}/send_message`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
-
-    const responseData = await response.json();
-
-    if (!response.ok) {
-      return {status: 'failed', data: responseData};
-    }
-
-    return {status: 'success', data: responseData};
-  } catch (error) {
-    console.error('Error:', error);
-    return {status: 'failed', error: error};
-  }
-};
-
-export const removeConversation = async (token: string, chat_partner_id: number) => {
-  const data = {
-    token,
-    chat_partner_id,
-  };
-
-  try {
-    const response = await fetch(`${baseApi}/remove_conversation`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
-
-    const responseData = await response.json();
-
-    if (!response.ok) {
-      return { status: 'failed', data: responseData };
-    }
-
-    return { status: 'success', data: responseData };
-  } catch (error) {
-    console.error('Error:', error);
-    return { status: 'failed', error: error };
-  }
-};
-

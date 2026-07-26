@@ -31,8 +31,8 @@ export default function LoginScreen() {
       if (!email || !password) {
          Toast.show({
             type: 'error',
-            text1: 'Ошибка',
-            text2: 'Заполните все поля',
+            text1: 'Error',
+            text2: 'Please fill in all fields',
          });
          return;
       }
@@ -55,8 +55,8 @@ export default function LoginScreen() {
 
          Toast.show({
             type: 'success',
-            text1: 'Успешно',
-            text2: 'Вход выполнен',
+            text1: 'Success',
+            text2: 'Signed in',
          });
 
          // Запускаем интервал получения сообщений
@@ -67,8 +67,8 @@ export default function LoginScreen() {
       } else {
          Toast.show({
             type: 'error',
-            text1: 'Ошибка входа',
-            text2: result.data?.message || 'Неверный email или пароль',
+            text1: 'Login failed',
+            text2: result.data?.message || 'Invalid email or password',
          });
       }
 

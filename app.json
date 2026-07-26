@@ -56,7 +56,8 @@
         {
           "locationAlwaysAndWhenInUsePermission": "This app needs access to your location to show you nearby users when you are online."
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -28,6 +28,7 @@
     "expo-linking": "~8.0.8",
     "expo-location": "^19.0.7",
     "expo-router": "~6.0.11",
+    "expo-secure-store": "~15.0.8",
     "expo-splash-screen": "~31.0.10",
     "expo-status-bar": "~3.0.8",
     "expo-symbols": "~1.0.7",
@@ -48,6 +49,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "babel-plugin-transform-remove-console": "^6.9.4",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"

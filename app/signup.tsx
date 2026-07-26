@@ -29,8 +29,8 @@ export default function SignUpScreen() {
     if (!email || !password || !passwordConfirmation) {
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: 'Заполните все поля',
+        text1: 'Error',
+        text2: 'Please fill in all fields',
       });
       return;
     }
@@ -39,8 +39,8 @@ export default function SignUpScreen() {
     if (password !== passwordConfirmation) {
       Toast.show({
         type: 'error',
-        text1: 'Ошибка',
-        text2: 'Пароли не совпадают',
+        text1: 'Error',
+        text2: 'Passwords do not match',
       });
       return;
     }
@@ -58,8 +58,8 @@ export default function SignUpScreen() {
       // Показываем сообщение об успехе
       Toast.show({
         type: 'success',
-        text1: 'Успешно',
-        text2: response.data?.message || 'Регистрация выполнена',
+        text1: 'Success',
+        text2: response.data?.message || 'Registration successful',
       });
 
       // Запрашиваем данные пользователя через /self
@@ -78,8 +78,8 @@ export default function SignUpScreen() {
     } else {
       Toast.show({
         type: 'error',
-        text1: 'Ошибка регистрации',
-        text2: response.data?.message || 'Не удалось зарегистрироваться',
+        text1: 'Registration failed',
+        text2: response.data?.message || 'Could not register',
       });
     }
 
