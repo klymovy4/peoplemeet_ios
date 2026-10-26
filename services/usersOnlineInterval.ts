@@ -5,7 +5,7 @@ let intervalId: number | null = null;
 let callback: ((users: any) => void) | null = null;
 
 export const enableUsersOnlinePolling = () => {
-  // Если интервал уже запущен, не запускаем повторно
+  // If the interval is already running, do not start it again
   if (intervalId !== null) {
     console.log('🟢 UsersOnlinePolling: Already enabled');
     return;
@@ -13,7 +13,7 @@ export const enableUsersOnlinePolling = () => {
 
   console.log('🟢 UsersOnlinePolling: Enabling polling');
 
-  // Выполняем первый запрос сразу
+  // Make the first request right away
   const fetchUsers = async () => {
     try {
       const token = await getToken();
@@ -25,7 +25,7 @@ export const enableUsersOnlinePolling = () => {
 
       const users = await getUsersOnline(token);
       
-      // Вызываем callback если он установлен
+      // Call the callback if it is set
       if (callback) {
         callback(users);
       }
@@ -34,10 +34,10 @@ export const enableUsersOnlinePolling = () => {
     }
   };
 
-  // Выполняем первый запрос
+  // Make the first request
   fetchUsers();
 
-  // Устанавливаем интервал на 3 секунды
+  // Set the interval to 3 seconds
   intervalId = setInterval(fetchUsers, 3000);
 };
 

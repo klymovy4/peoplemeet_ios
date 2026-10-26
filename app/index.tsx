@@ -12,7 +12,7 @@ export default function LoginScreen() {
    const [password, setPassword] = useState('');
    const [loading, setLoading] = useState(false);
 
-   // Заполняем email из параметров роутера
+   // Prefill email from router params
    useEffect(() => {
       if (params.email && typeof params.email === 'string') {
          setEmail(params.email);
@@ -41,13 +41,13 @@ export default function LoginScreen() {
       const result = await loginUser({email, password});
 
       if (result.status === 'success') {
-         // Сохраняем токен (может быть в разных форматах)
+         // Save the token (may come in different formats)
          const token = result.data.token;
          if (token) {
             await saveToken(token);
          }
 
-         // Сохраняем данные пользователя (могут быть в разных местах)
+         // Save user data (may be in different places)
          const userData = result.data.user || result.data.data || result.data;
          if (userData && typeof userData === 'object') {
             await saveUserData(userData);
@@ -59,10 +59,10 @@ export default function LoginScreen() {
             text2: 'Signed in',
          });
 
-         // Запускаем интервал получения сообщений
+         // Start the messages polling interval
          startMessagesInterval();
 
-         // Переход на защищенную страницу
+         // Go to the protected screen
          router.replace('/profile');
       } else {
          Toast.show({

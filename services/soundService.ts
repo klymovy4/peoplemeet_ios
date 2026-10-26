@@ -4,16 +4,16 @@ let soundObject: Audio.Sound | null = null;
 
 export const playMessageSound = async () => {
   try {
-    // Останавливаем предыдущий звук, если он играет
+    // Stop the previous sound if it is playing
     if (soundObject) {
       await soundObject.unloadAsync();
       soundObject = null;
     }
 
-    // Используем путь к файлу в assets
+    // Use the file path in assets
     const soundUri = require('../assets/message2.mp3');
 
-    // Создаем новый звуковой объект
+    // Create a new sound object
     const { sound } = await Audio.Sound.createAsync(
       soundUri,
       { shouldPlay: true, volume: 1.0 }
@@ -21,7 +21,7 @@ export const playMessageSound = async () => {
 
     soundObject = sound;
 
-    // Очищаем звук после завершения воспроизведения
+    // Unload the sound after playback finishes
     sound.setOnPlaybackStatusUpdate((status) => {
       if (status.isLoaded && status.didJustFinish) {
         sound.unloadAsync();

@@ -1,7 +1,7 @@
-// Вспомогательные функции для работы с картой
+// Helper functions for the map
 
 /**
- * Получает URL изображения пользователя
+ * Returns the user's image URL
  */
 export const getImageUrl = (imageName: string | null | undefined): string | null => {
   if (!imageName) return null;
@@ -12,7 +12,7 @@ export const getImageUrl = (imageName: string | null | undefined): string | null
 };
 
 /**
- * Безопасное преобразование координат в число
+ * Safely converts a coordinate to a number
  */
 export const parseCoordinate = (coord: string | number | null | undefined): number | null => {
   if (coord === null || coord === undefined) return null;
@@ -22,18 +22,18 @@ export const parseCoordinate = (coord: string | number | null | undefined): numb
 };
 
 /**
- * Генерирует уникальный цвет для маркера пользователя на основе его данных
+ * Generates a unique marker color for a user based on their data
  */
 export const getUserMarkerColor = (user: any): string => {
-  // Собираем данные для генерации цвета
+  // Collect data for generating the color
   const name = user?.name || '';
   const age = user?.age || 0;
   const sex = user?.sex || '';
   
-  // Создаем строку из всех данных
+  // Build a string from all the data
   const dataString = `${name}-${age}-${sex}`;
   
-  // Простая hash-функция для преобразования строки в число
+  // Simple hash function to turn the string into a number
   let hash = 0;
   for (let i = 0; i < dataString.length; i++) {
     const char = dataString.charCodeAt(i);
@@ -41,18 +41,18 @@ export const getUserMarkerColor = (user: any): string => {
     hash = hash & hash; // Convert to 32bit integer
   }
   
-  // Используем hash для генерации RGB компонентов
-  // Используем разные диапазоны для более ярких и насыщенных цветов
-  const r = Math.abs(hash) % 156 + 100; // 100-255 (яркие красные)
-  const g = Math.abs(hash * 7) % 156 + 100; // 100-255 (яркие зеленые)
-  const b = Math.abs(hash * 13) % 156 + 100; // 100-255 (яркие синие)
+  // Use the hash to generate RGB components
+  // Use different ranges for brighter, more saturated colors
+  const r = Math.abs(hash) % 156 + 100; // 100-255 (bright reds)
+  const g = Math.abs(hash * 7) % 156 + 100; // 100-255 (bright greens)
+  const b = Math.abs(hash * 13) % 156 + 100; // 100-255 (bright blues)
   
-  // Возвращаем цвет в формате hex
+  // Return the color in hex format
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 };
 
 /**
- * Вычисляет расстояние между двумя точками на карте
+ * Calculates the distance between two points on the map
  */
 export const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): string => {
   const EARTH_RADIUS = 6378137; // Radius of the Earth in meters
@@ -75,31 +75,31 @@ export const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2
 };
 
 /**
- * Форматирует время из created_at в формат HH:mm
+ * Formats created_at time as HH:mm
  */
 export const formatMessageTime = (createdAt: string | null | undefined): string => {
   if (!createdAt) return '';
   
   try {
-    // Парсим строку времени (формат "2025-12-10 20:03:11")
-    // Если строка не содержит информации о часовом поясе, 
-    // интерпретируем её как UTC и конвертируем в локальное время
+    // Parse the time string (format "2025-12-10 20:03:11")
+    // If the string has no time zone info,
+    // treat it as UTC and convert to local time
     let date: Date;
     
-    // Проверяем, есть ли информация о часовом поясе
+    // Check whether there is time zone info
     if (createdAt.includes('T') || createdAt.includes('Z') || createdAt.includes('+') || createdAt.includes('-', 10)) {
-      // Уже есть информация о часовом поясе
+      // Time zone info is already present
       date = new Date(createdAt);
     } else {
-      // Нет информации о часовом поясе, предполагаем UTC и добавляем 'Z'
+      // No time zone info: assume UTC and append 'Z'
       date = new Date(createdAt.replace(' ', 'T') + 'Z');
     }
     
-    // Используем локальное время устройства
+    // Use the device's local time
     const hours = date.getHours();
     const minutes = date.getMinutes();
     
-    // Формат 24 часа (локальное время устройства)
+    // 24-hour format (device local time)
     const hoursStr = hours.toString().padStart(2, '0');
     const minutesStr = minutes.toString().padStart(2, '0');
     
