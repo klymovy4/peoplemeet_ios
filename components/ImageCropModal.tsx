@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Modal, Pressable, Text, Dimensions } from 'react-native';
+import { View, StyleSheet, Modal, Pressable, Text, Dimensions , Image} from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
 } from 'react-native-reanimated';
 import { Image as ExpoImage } from 'expo-image';
-import { Image } from 'react-native';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const INITIAL_CROP_SIZE = Math.min(SCREEN_WIDTH * 0.8, SCREEN_HEIGHT * 0.6);
@@ -45,7 +44,7 @@ export default function ImageCropModal({
 
   useEffect(() => {
     if (visible && imageUri) {
-      // Сброс значений при открытии
+      // Reset values on open
       cropSize.value = INITIAL_CROP_SIZE;
       cropX.value = SCREEN_WIDTH / 2 - INITIAL_CROP_SIZE / 2;
       cropY.value = SCREEN_HEIGHT / 2 - INITIAL_CROP_SIZE / 2;
@@ -53,7 +52,7 @@ export default function ImageCropModal({
       cropStartY.value = 0;
       cropStartSize.value = INITIAL_CROP_SIZE;
 
-      // Загружаем размер изображения
+      // Load the image size
       Image.getSize(
         imageUri,
         (width, height) => {
@@ -66,7 +65,7 @@ export default function ImageCropModal({
     }
   }, [visible, imageUri]);
 
-  // Жест для перемещения кропа
+  // Gesture for moving the crop
   const cropPanGesture = Gesture.Pan()
     .onStart(() => {
       cropStartX.value = cropX.value;
@@ -87,7 +86,7 @@ export default function ImageCropModal({
       );
     });
 
-  // Жест для изменения размера кропа (перетаскивание угла)
+  // Gesture for resizing the crop (dragging a corner)
   const createResizeGesture = (corner: 'topRight' | 'bottomRight' | 'topLeft' | 'bottomLeft') => {
     return Gesture.Pan()
       .onStart(() => {
@@ -99,19 +98,19 @@ export default function ImageCropModal({
         const deltaX = e.translationX;
         const deltaY = e.translationY;
         
-        // Вычисляем изменение размера в зависимости от угла
+        // Compute the size change depending on the corner
         let sizeDelta = 0;
         if (corner === 'bottomRight') {
-          // Правый нижний угол: движение вправо-вниз увеличивает размер
+          // Bottom-right corner: moving right/down increases the size
           sizeDelta = Math.max(deltaX, deltaY);
         } else if (corner === 'topLeft') {
-          // Левый верхний угол: движение влево-вверх увеличивает размер
+          // Top-left corner: moving left/up increases the size
           sizeDelta = -Math.min(deltaX, deltaY);
         } else if (corner === 'topRight') {
-          // Правый верхний угол: движение вправо-вверх увеличивает размер
+          // Top-right corner: moving right/up increases the size
           sizeDelta = deltaX - deltaY;
         } else if (corner === 'bottomLeft') {
-          // Левый нижний угол: движение влево-вниз увеличивает размер
+          // Bottom-left corner: moving left/down increases the size
           sizeDelta = deltaY - deltaX;
         }
         
@@ -122,22 +121,22 @@ export default function ImageCropModal({
         
         cropSize.value = newSize;
         
-        // Корректируем позицию кропа в зависимости от угла
+        // Adjust the crop position depending on the corner
         const sizeChange = newSize - cropStartSize.value;
         if (corner === 'bottomRight') {
-          // Правый нижний угол: позиция не меняется
+          // Bottom-right corner: position does not change
           cropX.value = Math.max(0, Math.min(SCREEN_WIDTH - newSize, cropStartX.value));
           cropY.value = Math.max(0, Math.min(SCREEN_HEIGHT - newSize, cropStartY.value));
         } else if (corner === 'topLeft') {
-          // Левый верхний угол: двигаем влево-вверх
+          // Top-left corner: move left/up
           cropX.value = Math.max(0, Math.min(SCREEN_WIDTH - newSize, cropStartX.value - sizeChange));
           cropY.value = Math.max(0, Math.min(SCREEN_HEIGHT - newSize, cropStartY.value - sizeChange));
         } else if (corner === 'topRight') {
-          // Правый верхний угол: двигаем только вверх
+          // Top-right corner: move up only
           cropX.value = Math.max(0, Math.min(SCREEN_WIDTH - newSize, cropStartX.value));
           cropY.value = Math.max(0, Math.min(SCREEN_HEIGHT - newSize, cropStartY.value - sizeChange));
         } else if (corner === 'bottomLeft') {
-          // Левый нижний угол: двигаем только влево
+          // Bottom-left corner: move left only
           cropX.value = Math.max(0, Math.min(SCREEN_WIDTH - newSize, cropStartX.value - sizeChange));
           cropY.value = Math.max(0, Math.min(SCREEN_HEIGHT - newSize, cropStartY.value));
         }
@@ -169,7 +168,7 @@ export default function ImageCropModal({
   const handleSave = () => {
     if (!imageSize.width || !imageSize.height || !imageLayout.width || !imageLayout.height) return;
 
-    // Вычисляем реальные размеры отображаемого изображения с учетом aspect ratio
+    // Compute the actual size of the displayed image, accounting for aspect ratio
     const imageAspectRatio = imageSize.width / imageSize.height;
     const containerWidth = imageLayout.width;
     const containerHeight = imageLayout.height;
@@ -177,7 +176,7 @@ export default function ImageCropModal({
     let displayWidth = containerWidth;
     let displayHeight = containerHeight;
 
-    // Вычисляем реальные размеры изображения с сохранением пропорций
+    // Compute the actual image size, preserving proportions
     if (containerWidth / containerHeight > imageAspectRatio) {
       displayHeight = containerHeight;
       displayWidth = displayHeight * imageAspectRatio;
@@ -186,24 +185,24 @@ export default function ImageCropModal({
       displayHeight = displayWidth / imageAspectRatio;
     }
 
-    // Вычисляем смещение изображения относительно контейнера (центрирование)
+    // Compute the image offset relative to the container (centering)
     const imageOffsetX = (containerWidth - displayWidth) / 2;
     const imageOffsetY = (containerHeight - displayHeight) / 2;
 
-    // Вычисляем позицию изображения на экране
+    // Compute the image position on screen
     const imageScreenX = imageLayout.x + imageOffsetX;
     const imageScreenY = imageLayout.y + imageOffsetY;
 
-    // Масштаб для преобразования координат экрана в координаты исходного изображения
+    // Scale for converting screen coordinates to source image coordinates
     const scaleX = imageSize.width / displayWidth;
     const scaleY = imageSize.height / displayHeight;
 
-    // Вычисляем координаты кропа на экране
+    // Compute the crop coordinates on screen
     const cropScreenX = cropX.value;
     const cropScreenY = cropY.value;
     const currentCropSize = cropSize.value;
 
-    // Вычисляем пересечение кропа с изображением
+    // Compute the intersection of the crop and the image
     const cropLeft = cropScreenX;
     const cropTop = cropScreenY;
     const cropRight = cropScreenX + currentCropSize;
@@ -214,13 +213,13 @@ export default function ImageCropModal({
     const imageRight = imageScreenX + displayWidth;
     const imageBottom = imageScreenY + displayHeight;
 
-    // Находим пересечение кропа с изображением
+    // Find the intersection of the crop and the image
     const intersectLeft = Math.max(cropLeft, imageLeft);
     const intersectTop = Math.max(cropTop, imageTop);
     const intersectRight = Math.min(cropRight, imageRight);
     const intersectBottom = Math.min(cropBottom, imageBottom);
 
-    // Если нет пересечения, используем центр изображения
+    // If there is no intersection, use the image center
     if (intersectLeft >= intersectRight || intersectTop >= intersectBottom) {
       const centerX = imageScreenX + displayWidth / 2;
       const centerY = imageScreenY + displayHeight / 2;
@@ -244,7 +243,7 @@ export default function ImageCropModal({
       return;
     }
 
-    // Преобразуем координаты пересечения из экранных в координаты исходного изображения
+    // Convert the intersection from screen coordinates to source image coordinates
     const cropData = {
       x: Math.max(0, (intersectLeft - imageScreenX) * scaleX),
       y: Math.max(0, (intersectTop - imageScreenY) * scaleY),
@@ -254,18 +253,18 @@ export default function ImageCropModal({
       imageHeight: imageSize.height,
     };
 
-    // Ограничиваем координаты границами изображения
+    // Clamp coordinates to the image bounds
     cropData.x = Math.max(0, Math.min(imageSize.width - cropData.width, cropData.x));
     cropData.y = Math.max(0, Math.min(imageSize.height - cropData.height, cropData.y));
     cropData.width = Math.min(cropData.width, imageSize.width - cropData.x);
     cropData.height = Math.min(cropData.height, imageSize.height - cropData.y);
 
-    // Убеждаемся, что кроп квадратный (используем минимальный размер)
+    // Make sure the crop is square (use the smaller side)
     const minSize = Math.min(cropData.width, cropData.height);
     cropData.width = minSize;
     cropData.height = minSize;
 
-    // Пересчитываем позицию для центрирования
+    // Recalculate the position for centering
     cropData.x = Math.max(0, Math.min(imageSize.width - cropData.width, cropData.x));
     cropData.y = Math.max(0, Math.min(imageSize.height - cropData.height, cropData.y));
 
@@ -284,10 +283,10 @@ export default function ImageCropModal({
       <View style={styles.container}>
         <View style={styles.header}>
           <Pressable onPress={onDiscard} style={styles.button}>
-            <Text style={styles.buttonText}>Отмена</Text>
+            <Text style={styles.buttonText}>Cancel</Text>
           </Pressable>
           <Pressable onPress={handleSave} style={styles.button}>
-            <Text style={styles.buttonText}>Сохранить</Text>
+            <Text style={styles.buttonText}>Save</Text>
           </Pressable>
         </View>
 
@@ -308,11 +307,11 @@ export default function ImageCropModal({
             }}
           />
 
-          {/* Кроп рамка с ручками */}
+          {/* Crop frame with handles */}
           <Animated.View style={[styles.cropOverlay, cropAnimatedStyle]}>
             <Animated.View style={[styles.cropBorder, cropBorderStyle]} />
             
-            {/* Ручки для изменения размера */}
+            {/* Resize handles */}
             <GestureDetector gesture={resizeTopLeftGesture}>
               <View style={[styles.resizeHandle, styles.resizeHandleTopLeft]} />
             </GestureDetector>
@@ -326,7 +325,7 @@ export default function ImageCropModal({
               <View style={[styles.resizeHandle, styles.resizeHandleBottomRight]} />
             </GestureDetector>
             
-            {/* Область для перемещения кропа */}
+            {/* Area for moving the crop */}
             <GestureDetector gesture={cropPanGesture}>
               <View style={StyleSheet.absoluteFill} />
             </GestureDetector>
