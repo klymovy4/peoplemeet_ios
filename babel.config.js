@@ -3,8 +3,8 @@ module.exports = function (api) {
   return {
     presets: ['babel-preset-expo'],
     env: {
-      // В продакшн-сборке полностью вырезаем console.* — чтобы в логах
-      // не оставалось токенов, сообщений и координат пользователей.
+      // Strip all console.* calls from production builds so the logs
+      // do not contain tokens, messages or user coordinates.
       production: {
         plugins: ['transform-remove-console'],
       },

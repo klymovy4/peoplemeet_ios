@@ -5,7 +5,7 @@ let intervalId: number | null = null;
 let callback: ((messagesData: any) => void) | null = null;
 
 export const startMessagesInterval = () => {
-  // Если интервал уже запущен, не запускаем повторно
+  // If the interval is already running, do not start it again
   if (intervalId !== null) {
     console.log('MessagesInterval: Already started');
     return;
@@ -13,7 +13,7 @@ export const startMessagesInterval = () => {
 
   console.log('MessagesInterval: Starting polling');
 
-  // Выполняем первый запрос сразу
+  // Make the first request right away
   const fetchMessages = async () => {
     try {
       const token = await getToken();
@@ -25,7 +25,7 @@ export const startMessagesInterval = () => {
 
       const result = await getMessages(token);
       
-      // Вызываем callback если он установлен
+      // Call the callback if it is set
       if (callback) {
         if (result.status === 'success') {
           callback(result.data);
@@ -41,10 +41,10 @@ export const startMessagesInterval = () => {
     }
   };
 
-  // Выполняем первый запрос
+  // Make the first request
   fetchMessages();
 
-  // Устанавливаем интервал на 3 секунды
+  // Set the interval to 3 seconds
   intervalId = setInterval(fetchMessages, 3000);
 };
 

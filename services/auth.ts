@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
-// Токен авторизации хранится в защищённом хранилище (Keychain на iOS,
-// Keystore на Android). Ключ SecureStore допускает только [A-Za-z0-9._-].
+// The auth token is kept in secure storage (Keychain on iOS,
+// Keystore on Android). SecureStore keys allow only [A-Za-z0-9._-].
 const TOKEN_KEY = 'auth_token';
 const USER_DATA_KEY = '@user_data';
 

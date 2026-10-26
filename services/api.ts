@@ -1,28 +1,28 @@
-// Базовый адрес API. Задаётся через переменную окружения EXPO_PUBLIC_API_URL
-// (см. .env.example); при её отсутствии используется продакшн-адрес.
+// API base URL. Set via the EXPO_PUBLIC_API_URL environment variable
+// (see .env.example); falls back to the production URL when unset.
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://peoplemeet.com.ua';
 
 export type ApiResult =
   | { status: 'success'; data: any }
   | { status: 'failed'; data?: any; error?: unknown };
 
-// Обработчик истёкшей/недействительной сессии (401). Регистрируется на старте
-// приложения (см. services/session.ts), чтобы сетевой слой не зависел от роутера.
+// Handler for an expired/invalid session (401). Registered at app startup
+// (see services/session.ts) so the network layer does not depend on the router.
 let onUnauthorized: (() => void) | null = null;
 
 export const setUnauthorizedHandler = (handler: (() => void) | null) => {
   onUnauthorized = handler;
 };
 
-// Есть ли в теле запроса токен — только такие запросы могут дать «session expired».
-// (login/signup/recovery отправляют email/пароль, а не токен.)
+// Whether the request body contains a token - only such requests can mean "session expired".
+// (login/signup/recovery send email/password, not a token.)
 const bodyHasToken = (body: unknown): boolean =>
   !!body && typeof body === 'object' && 'token' in (body as Record<string, unknown>);
 
 /**
- * Единая точка отправки JSON-запросов к API.
- * Возвращает признак успеха HTTP-ответа и разобранное тело.
- * При 401 на авторизованном запросе запускает обработчик разлогина.
+ * Single entry point for sending JSON requests to the API.
+ * Returns whether the HTTP response succeeded and the parsed body.
+ * On 401 for an authenticated request, triggers the logout handler.
  */
 async function apiPost(path: string, body: unknown): Promise<{ ok: boolean; data: any }> {
   const response = await fetch(`${BASE_URL}${path}`, {
@@ -42,8 +42,8 @@ async function apiPost(path: string, body: unknown): Promise<{ ok: boolean; data
 }
 
 /**
- * Обёртка над apiPost с единым форматом результата { status, data }
- * и централизованной обработкой сетевых ошибок.
+ * Wrapper around apiPost with a uniform { status, data } result
+ * and centralized network error handling.
  */
 async function request(path: string, body: unknown): Promise<ApiResult> {
   try {
@@ -88,8 +88,8 @@ export const removeConversation = (token: string, chat_partner_id: number) =>
   request('/remove_conversation', { token, chat_partner_id });
 
 /**
- * Загрузка аватара. Использует multipart/form-data, поэтому не через apiPost:
- * в React Native файл передаётся объектом { uri, type, name }, в web — File.
+ * Avatar upload. Uses multipart/form-data, so it does not go through apiPost:
+ * in React Native the file is passed as { uri, type, name }, on web as a File.
  */
 export const uploadAvatar = async (
   file: File | { uri: string; type: string; name: string },
@@ -124,8 +124,8 @@ export const uploadAvatar = async (
 };
 
 /**
- * Список онлайн-пользователей. Возвращает сырой ответ сервера
- * (формат разбирается на стороне экрана карты) или null при ошибке.
+ * Online users list. Returns the raw server response
+ * (the format is parsed by the map screen), or null on error.
  */
 export const getUsersOnline = async (token: string): Promise<any | null> => {
   try {

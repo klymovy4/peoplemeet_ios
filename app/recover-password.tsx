@@ -19,7 +19,7 @@ export default function RecoverPasswordScreen() {
   };
 
   const handleCodeChange = (text: string) => {
-    // Разрешаем только цифры и максимум 4 символа
+    // Allow digits only, up to 4 characters
     const numericText = text.replace(/[^0-9]/g, '').slice(0, 4);
     setFormCode(numericText);
   };
@@ -32,7 +32,7 @@ export default function RecoverPasswordScreen() {
     setNewConfirmPassword(text);
   };
 
-  // Автоматическая проверка кода при вводе 4 цифр
+  // Automatically check the code once 4 digits are entered
   useEffect(() => {
     if (formCode.length !== 4) return;
 
@@ -121,7 +121,7 @@ export default function RecoverPasswordScreen() {
         text2: 'Password changed successfully',
       });
       
-      // Переход на страницу логина с заполненным email
+      // Go to the login screen with the email prefilled
       router.replace({
         pathname: '/',
         params: { email },
@@ -164,7 +164,7 @@ export default function RecoverPasswordScreen() {
             />
           </View>
 
-          {/* Code field - показывается после отправки кода */}
+          {/* Code field - shown after the code is sent */}
           {isRestoreCode && !isStartChangePassword && (
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Code</Text>
@@ -179,7 +179,7 @@ export default function RecoverPasswordScreen() {
             </View>
           )}
 
-          {/* New password fields - показываются после подтверждения кода */}
+          {/* New password fields - shown after the code is confirmed */}
           {isStartChangePassword && (
             <>
               <View style={styles.inputContainer}>
@@ -206,7 +206,7 @@ export default function RecoverPasswordScreen() {
             </>
           )}
 
-          {/* Send code button - показывается до отправки кода */}
+          {/* Send code button - shown before the code is sent */}
           {!isStartChangePassword && !isRestoreCode && (
             <Pressable 
               style={[styles.sendCodeButton, loading && styles.buttonDisabled]} 
@@ -221,7 +221,7 @@ export default function RecoverPasswordScreen() {
             </Pressable>
           )}
 
-          {/* Reset password button - показывается после подтверждения кода */}
+          {/* Reset password button - shown after the code is confirmed */}
           {isStartChangePassword && (
             <Pressable 
               style={[styles.sendCodeButton, loading && styles.buttonDisabled]} 

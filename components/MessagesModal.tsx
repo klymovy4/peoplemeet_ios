@@ -31,12 +31,12 @@ interface MessagesModalProps {
   getMessagesForUser: (userId: string | number) => any[];
   formatMessageTime: (createdAt: string | null | undefined) => string;
   title?: string;
-  // Функции для работы с сообщениями
+  // Functions for working with messages
   getToken: () => Promise<string | null>;
   readMessages: (token: string, userId: number) => Promise<any>;
   setMessagesData: React.Dispatch<React.SetStateAction<any>>;
   setUnreadMessagesCount: React.Dispatch<React.SetStateAction<number>>;
-  onlineUsers?: any[]; // Массив онлайн пользователей из get_users/online_users
+  onlineUsers?: any[]; // Online users array from get_users/online_users
 }
 
 export default function MessagesModal({
@@ -64,14 +64,14 @@ export default function MessagesModal({
   getUnreadCountForUser,
   getMessagesForUser,
   formatMessageTime,
-  title = 'Сообщения  ',
+  title = 'Messages',
   getToken,
   readMessages,
   setMessagesData,
   setUnreadMessagesCount,
   onlineUsers = [],
 }: MessagesModalProps) {
-  // Внутреннее состояние для удаления переписки (если не передано извне)
+  // Internal state for deleting a conversation (if not passed from outside)
   const [internalRemovingConversation, setInternalRemovingConversation] = useState(false);
   const isRemovingConversation = removingConversation !== undefined ? removingConversation : internalRemovingConversation;
 
@@ -96,9 +96,9 @@ export default function MessagesModal({
     }
   };
 
-  // Функция для получения актуального пользователя из messagesUsers или onlineUsers
-  // messagesUsers содержит данные из get_messages.users[id] - это актуальная информация о пользователе
-  // onlineUsers содержит данные из get_users/online_users - пользователи которые онлайн
+  // Returns the up-to-date user from messagesUsers or onlineUsers
+  // messagesUsers holds data from get_messages.users[id] - the up-to-date user info
+  // onlineUsers holds data from get_users/online_users - users who are online
   const getActualUser = () => {
     if (!selectedChatUser) return null;
     
@@ -109,32 +109,32 @@ export default function MessagesModal({
                       id === String(selectedChatUser.id));
     });
     
-    // Если пользователь найден в messagesUsers, используем его данные (актуальные из get_messages)
+    // If the user is found in messagesUsers, use that data (up to date from get_messages)
     if (userId && messagesUsers[userId]) {
       return messagesUsers[userId];
     }
     
-    // Если пользователя нет в messagesUsers, проверяем onlineUsers
-    // Если пользователь есть в onlineUsers, значит он онлайн
+    // If the user is not in messagesUsers, check onlineUsers
+    // If the user is in onlineUsers, they are online
     const onlineUser = onlineUsers.find((u: any) => {
       const uId = u.id || u.user_id;
       return uId === selectedChatUser.id || String(uId) === String(selectedChatUser.id);
     });
     
     if (onlineUser) {
-      // Пользователь онлайн, используем данные из onlineUsers и помечаем как онлайн
+      // The user is online: use data from onlineUsers and mark as online
       return {
         ...selectedChatUser,
         ...onlineUser,
-        is_online: 1, // Помечаем как онлайн, так как он есть в onlineUsers
+        is_online: 1, // Mark as online since they are in onlineUsers
       };
     }
     
-    // Иначе используем selectedChatUser как fallback
+    // Otherwise fall back to selectedChatUser
     return selectedChatUser;
   };
 
-  // Универсальная функция удаления переписки
+  // Generic conversation delete function
   const handleRemoveConversation = async () => {
     if (isRemovingConversation) {
       return;
@@ -152,7 +152,7 @@ export default function MessagesModal({
       return;
     }
 
-    // Показываем подтверждение перед удалением
+    // Show a confirmation before deleting
     Alert.alert(
       'Delete conversation',
       'Are you sure you want to delete the conversation with this user? This action cannot be undone.',
@@ -187,7 +187,7 @@ export default function MessagesModal({
                   text2: 'Conversation deleted',
                 });
                 
-                // Закрываем модальное окно сообщений
+                // Close the messages modal
                 slideAnim.value = withTiming(1, { duration: 300 });
                 setTimeout(() => {
                   onClose();
@@ -195,7 +195,7 @@ export default function MessagesModal({
                   onSetShowUserInfo(false);
                 }, 300);
                 
-                // Обновляем данные сообщений
+                // Update messages data
                 setMessagesData({});
                 setUnreadMessagesCount(0);
               } else {
@@ -223,22 +223,22 @@ export default function MessagesModal({
     );
   };
 
-  // Функция для открытия чата с пользователем и пометки сообщений как прочитанных
+  // Opens a chat with a user and marks messages as read
   const handleOpenChat = async (userId: string | number) => {
     const user = messagesUsers[userId];
     if (user) {
       onSetSelectedChatUser(user);
-      onSetShowUserInfo(false); // Сбрасываем показ информации при открытии нового чата
+      onSetShowUserInfo(false); // Reset the user info view when opening a new chat
       
-      // Сбрасываем счетчик сообщений при открытии нового чата
+      // Reset the message counter when opening a new chat
       lastMessageCountRef.current = 0;
       
-      // Прокручиваем вниз при открытии чата
+      // Scroll down when opening the chat
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 300);
       
-      // Отправляем запрос о прочтении сообщений
+      // Send a read receipt request
       try {
         const token = await getToken();
         if (token && user.id) {
@@ -246,13 +246,13 @@ export default function MessagesModal({
           if (result.status === 'success') {
             console.log('Messages marked as read for user:', user.id);
             
-            // Обновляем локальное состояние сообщений, помечая их как прочитанные
+            // Update local messages state, marking them as read
             setMessagesData((prevData: any) => {
               const updatedData = { ...prevData };
               const messages = updatedData.messages || {};
               const userMessages = messages[userId] || [];
               
-              // Помечаем все входящие сообщения от этого пользователя как прочитанные
+              // Mark all incoming messages from this user as read
               if (Array.isArray(userMessages)) {
                 const userIdNum = typeof userId === 'string' ? parseInt(userId, 10) : userId;
                 userMessages.forEach((message) => {
@@ -262,7 +262,7 @@ export default function MessagesModal({
                 });
               }
               
-              // Пересчитываем количество непрочитанных пользователей сразу
+              // Recalculate the number of users with unread messages right away
               let usersWithUnreadCount = 0;
               Object.keys(messages).forEach((uid) => {
                 const userMsgs = messages[uid] || [];
@@ -281,7 +281,7 @@ export default function MessagesModal({
                 }
               });
               
-              // Обновляем счетчик непрочитанных сразу
+              // Update the unread counter right away
               setUnreadMessagesCount(usersWithUnreadCount);
               
               return updatedData;
@@ -319,9 +319,9 @@ export default function MessagesModal({
                       onPress={() => onSetShowUserInfo(true)}
                     >
                       {(() => {
-                        // Используем актуальные данные из messagesUsers или onlineUsers
+                        // Use up-to-date data from messagesUsers or onlineUsers
                         const actualUser = getActualUser();
-                        // Если is_online === 1 или пользователь найден в onlineUsers, значит онлайн
+                        // If is_online === 1 or the user is found in onlineUsers, they are online
                         const isOnline = actualUser?.is_online === 1 || 
                           (onlineUsers.some((u: any) => {
                             const uId = u.id || u.user_id;
@@ -351,7 +351,7 @@ export default function MessagesModal({
                     <Text style={styles.messagesTitle}>
                       {(() => {
                         const actualUser = getActualUser();
-                        return actualUser?.name || 'Пользователь';
+                        return actualUser?.name || 'User';
                       })()}
                     </Text>
                   </>
@@ -367,9 +367,9 @@ export default function MessagesModal({
                 showUserInfo ? (
                   <ScrollView style={styles.userInfoContainer} contentContainerStyle={styles.userInfoContent}>
                     {(() => {
-                      // Используем актуальные данные из messagesUsers или onlineUsers
+                      // Use up-to-date data from messagesUsers or onlineUsers
                       const actualUser = getActualUser();
-                      // Если is_online === 1 или пользователь найден в onlineUsers, значит онлайн
+                      // If is_online === 1 or the user is found in onlineUsers, they are online
                       const isOnline = actualUser?.is_online === 1 || 
                         (onlineUsers.some((u: any) => {
                           const uId = u.id || u.user_id;
@@ -401,23 +401,23 @@ export default function MessagesModal({
                           
                           <View style={styles.userInfoDetails}>
                             <Text style={styles.userInfoName}>
-                              {actualUser?.name || 'Имя не указано'}
+                              {actualUser?.name || 'No name'}
                             </Text>
                             
                             <View style={styles.userInfoRow}>
-                              <Text style={styles.userInfoLabel}>Возраст:</Text>
-                              <Text style={styles.userInfoValue}>{actualUser?.age || 'не указан'}</Text>
+                              <Text style={styles.userInfoLabel}>Age:</Text>
+                              <Text style={styles.userInfoValue}>{actualUser?.age || 'not specified'}</Text>
                             </View>
                             
                             <View style={styles.userInfoRow}>
-                              <Text style={styles.userInfoLabel}>Пол:</Text>
+                              <Text style={styles.userInfoLabel}>Gender:</Text>
                               <Text style={styles.userInfoValue}>
-                                {actualUser?.sex === 'male' ? 'Мужской' : actualUser?.sex === 'female' ? 'Женский' : actualUser?.sex || 'не указан'}
+                                {actualUser?.sex === 'male' ? 'Male' : actualUser?.sex === 'female' ? 'Female' : actualUser?.sex || 'not specified'}
                               </Text>
                             </View>
                             
                             <View style={styles.userInfoRow}>
-                              <Text style={styles.userInfoLabel}>Статус:</Text>
+                              <Text style={styles.userInfoLabel}>Status:</Text>
                               {isOnline ? (
                                 onShowOnMap ? (
                                   <Pressable
@@ -435,16 +435,16 @@ export default function MessagesModal({
                                     <Text style={styles.userInfoShowOnMapButtonText}>Show on map</Text>
                                   </Pressable>
                                 ) : (
-                                  <Text style={styles.userInfoValue}>Онлайн</Text>
+                                  <Text style={styles.userInfoValue}>Online</Text>
                                 )
                               ) : (
-                                <Text style={styles.userInfoValue}>Оффлайн</Text>
+                                <Text style={styles.userInfoValue}>Offline</Text>
                               )}
                             </View>
                             
                             {actualUser?.description && (
                               <View style={styles.userInfoDescriptionContainer}>
-                                <Text style={styles.userInfoDescriptionLabel}>Описание:</Text>
+                                <Text style={styles.userInfoDescriptionLabel}>Description:</Text>
                                 <Text style={styles.userInfoDescription}>
                                   {actualUser.description}
                                 </Text>
@@ -452,7 +452,7 @@ export default function MessagesModal({
                             )}
                             
                             {(() => {
-                              // Проверяем, есть ли сообщения у этого пользователя
+                              // Check whether this user has messages
                               const targetUserId = actualUser?.id || selectedChatUser?.id;
                               const userId = Object.keys(messagesUsers).find(id => {
                                 const user = messagesUsers[id];
@@ -463,7 +463,7 @@ export default function MessagesModal({
                               const chatMessages = userId ? getMessagesForUser(userId) : [];
                               const hasMessages = chatMessages.length > 0;
                               
-                              // Показываем кнопку только если есть сообщения
+                              // Show the button only if there are messages
                               if (!hasMessages) {
                                 return null;
                               }
@@ -473,7 +473,7 @@ export default function MessagesModal({
                                   <Pressable
                                     style={[styles.userInfoDeleteButton, isRemovingConversation && styles.userInfoDeleteButtonDisabled]}
                                     onPress={() => {
-                                      // Используем переданную функцию или внутреннюю
+                                      // Use the passed function or the internal one
                                       if (onRemoveConversation) {
                                         onRemoveConversation();
                                       } else {
@@ -485,7 +485,7 @@ export default function MessagesModal({
                                     {isRemovingConversation ? (
                                       <ActivityIndicator size="small" color="#fff" />
                                     ) : (
-                                      <Text style={styles.userInfoDeleteButtonText}>Удалить переписку</Text>
+                                      <Text style={styles.userInfoDeleteButtonText}>Delete conversation</Text>
                                     )}
                                   </Pressable>
                                 </View>
@@ -520,7 +520,7 @@ export default function MessagesModal({
                         const chatMessages = userId ? getMessagesForUser(userId) : [];
                         
                         return chatMessages.length === 0 ? (
-                          <Text style={styles.messagesEmptyText}>Нет сообщений msg</Text>
+                          <Text style={styles.messagesEmptyText}>No messages yet</Text>
                         ) : (
                           chatMessages.map((message: any, index: number) => {
                             const isFromCurrentUser = message.sender_id === userData?.id;
@@ -555,7 +555,7 @@ export default function MessagesModal({
                         style={styles.chatInput}
                         value={messageText}
                         onChangeText={onSetMessageText}
-                        placeholder="Введите сообщение..."
+                        placeholder="Type a message..."
                         placeholderTextColor="#999"
                         multiline
                         onSubmitEditing={onSendMessage}
@@ -568,7 +568,7 @@ export default function MessagesModal({
                         {sendingMessage ? (
                           <ActivityIndicator size="small" color="#fff" />
                         ) : (
-                          <Text style={styles.chatSendButtonText}>Отправить</Text>
+                          <Text style={styles.chatSendButtonText}>Send</Text>
                         )}
                       </Pressable>
                     </View>
@@ -586,24 +586,24 @@ export default function MessagesModal({
                     keyboardShouldPersistTaps="handled"
                   >
                     {Object.keys(messagesUsers).length === 0 ? (
-                      <Text style={styles.messagesEmptyText}>Здесь будут ваши сообщения</Text>
+                      <Text style={styles.messagesEmptyText}>Your messages will appear here</Text>
                     ) : (
                       Object.keys(messagesUsers).map((userId) => {
                         const user = messagesUsers[userId];
-                        // Проверяем онлайн статус: либо is_online === 1, либо пользователь есть в onlineUsers
+                        // Check online status: either is_online === 1 or the user is in onlineUsers
                         const isOnline = user?.is_online === 1 || 
                           (onlineUsers.some((u: any) => {
                             const uId = u.id || u.user_id;
                             return uId === user?.id || String(uId) === String(user?.id) || String(uId) === String(userId);
                           }));
                         
-                        // Ищем пользователя в onlineUsers для получения thoughts
+                        // Look up the user in onlineUsers to get thoughts
                         const onlineUser = onlineUsers.find((u: any) => {
                           const uId = u.id || u.user_id;
                           return uId === user?.id || String(uId) === String(user?.id) || String(uId) === String(userId);
                         });
                         
-                        // Используем thoughts из onlineUsers, если пользователь онлайн и поле есть
+                        // Use thoughts from onlineUsers if the user is online and the field exists
                         const thoughts = (isOnline && onlineUser?.thoughts) ? onlineUser.thoughts : null;
                         
                         return (

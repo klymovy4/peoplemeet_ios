@@ -2,12 +2,14 @@ import { getToken, removeToken, saveUserData } from '@/services/auth';
 import { getSelf, uploadAvatar, editProfile, getOnline, readMessages, sendMessage } from '@/services/api';
 import { enableUsersOnlinePolling, disableUsersOnlinePolling, setUsersOnlineCallback } from '@/services/usersOnlineInterval';
 import { startMessagesInterval, stopMessagesInterval, setMessagesCallback } from '@/services/messagesInterval';
+import { startLocationTracking, stopLocationTracking } from '@/services/locationTracking';
 import { playMessageSound } from '@/services/soundService';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { formatMessageTime, getImageUrl } from '@/app/utils/utils';
 import { useEffect, useState, useRef } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, TextInput, Platform, Switch } from 'react-native';
+import { ActivityIndicator, AppState, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View, TextInput, Platform, Switch } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSharedValue, withSpring } from 'react-native-reanimated';
 import Toast from 'react-native-toast-message';
 import * as ImagePicker from 'expo-image-picker';
@@ -15,10 +17,11 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import ImageCropModal from '@/components/ImageCropModal';
 import MessagesModal from '@/components/MessagesModal';
-// @ts-ignore - Picker может не иметь типов
+// @ts-ignore - Picker may not have types
 import { Picker } from '@react-native-picker/picker';
 
 export default function ProfileScreen() {
+  const insets = useSafeAreaInsets();
   const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [cropMode, setCropMode] = useState(false);
@@ -28,7 +31,7 @@ export default function ProfileScreen() {
   const [isOnline, setIsOnline] = useState(false);
   const [togglingOnline, setTogglingOnline] = useState(false);
   
-  // Состояния для редактируемых полей
+  // State for editable fields
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
   const [sex, setSex] = useState('');
@@ -43,10 +46,11 @@ export default function ProfileScreen() {
   const [messageText, setMessageText] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const [showUserInfo, setShowUserInfo] = useState(false);
-  const slideAnim = useSharedValue(1); // Начальное значение 1 = плашка скрыта внизу
+  const slideAnim = useSharedValue(1); // Initial value 1 = panel hidden at the bottom
   const scrollViewRef = useRef<ScrollView | null>(null);
-  const lastMessageCountRef = useRef<number>(0); // Храним количество сообщений для проверки новых
-  const previousUnreadCountRef = useRef<number>(0); // Храним предыдущее количество непрочитанных сообщений
+  const lastMessageCountRef = useRef<number>(0); // Message count, used to detect new messages
+  // Previous unread count; null means no poll has happened yet
+  const previousUnreadCountRef = useRef<number | null>(null);
   const userIdRef = useRef<number | null>(null);
   
 
@@ -55,15 +59,34 @@ export default function ProfileScreen() {
     checkAuth();
   }, []);
 
+  // Keep a ref in sync so the AppState listener (registered once) sees the current status
+  const isOnlineRef = useRef(false);
   useEffect(() => {
-    // Обновляем ref при изменении userData
+    isOnlineRef.current = isOnline;
+  }, [isOnline]);
+
+  useEffect(() => {
+    // Location is not tracked in the background; on return the server may have already
+    // set the user offline (no requests for 5 minutes), so re-check the status
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        refreshOnlineStatus();
+      } else if (state === 'background') {
+        stopLocationTracking();
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    // Update the ref when userData changes
     if (userData?.id) {
       userIdRef.current = userData.id;
     }
   }, [userData?.id]);
 
   useEffect(() => {
-    // Устанавливаем callback для получения онлайн пользователей
+    // Set the callback for receiving online users
     setUsersOnlineCallback((users) => {
       const currentUserId = userIdRef.current;
       
@@ -74,7 +97,7 @@ export default function ProfileScreen() {
       
       let usersArray: any[] = [];
       
-      // Обрабатываем разные форматы ответа
+      // Handle different response formats
       if (Array.isArray(users)) {
         usersArray = users;
       } else if (users.users && Array.isArray(users.users)) {
@@ -83,7 +106,7 @@ export default function ProfileScreen() {
         usersArray = users.data;
       }
       
-      // Фильтруем текущего пользователя из списка
+      // Filter the current user out of the list
       const filteredUsers = usersArray.filter((user: any) => {
         const userId = user.id || user.user_id;
         return userId !== currentUserId;
@@ -92,14 +115,14 @@ export default function ProfileScreen() {
       setOnlineUsers(filteredUsers);
     });
 
-    // Очищаем callback при размонтировании
+    // Clear the callback on unmount
     return () => {
       setUsersOnlineCallback(null);
     };
   }, []);
 
   useEffect(() => {
-    // Устанавливаем callback для получения сообщений
+    // Set the callback for receiving messages
     setMessagesCallback((messagesData) => {
       console.log('ProfileScreen: Received messages data:', messagesData);
       
@@ -110,7 +133,7 @@ export default function ProfileScreen() {
         return;
       }
       
-      // Подсчитываем количество пользователей с непрочитанными сообщениями
+      // Count users with unread messages
       const messages = messagesData.messages || {};
       let usersWithUnreadCount = 0;
       
@@ -118,7 +141,7 @@ export default function ProfileScreen() {
         const userMessages = messages[userId] || [];
         const userIdNum = parseInt(userId, 10);
         
-        // Проверяем, есть ли хотя бы одно входящее непрочитанное сообщение (sender_id === userId и is_read: 0)
+        // Check whether there is at least one incoming unread message (sender_id === userId and is_read: 0)
         const hasUnread = Array.isArray(userMessages) && userMessages.some((message) => {
           return message && 
                  message.sender_id === userIdNum && 
@@ -130,25 +153,25 @@ export default function ProfileScreen() {
         }
       });
       
-      // Воспроизводим звук, если появились новые непрочитанные сообщения
+      // Play a sound if new unread messages arrived
       const previousUnreadCount = previousUnreadCountRef.current;
-      if (usersWithUnreadCount > previousUnreadCount && !messagesVisible) {
-        // Воспроизводим звук только если появились новые непрочитанные сообщения и чат не открыт
+      if (previousUnreadCount !== null && usersWithUnreadCount > previousUnreadCount && !messagesVisible) {
+        // Play the sound only if new unread messages arrived and the chat is not open
         playMessageSound();
       }
       
       previousUnreadCountRef.current = usersWithUnreadCount;
       setUnreadMessagesCount(usersWithUnreadCount);
       
-      // Сохраняем данные о пользователях и сообщениях
+      // Store users and messages data
       const users = messagesData.users || {};
       setMessagesUsers(users);
       setMessagesData(messagesData);
       
-      // Если чат открыт с пользователем И модальное окно видимо, проверяем есть ли новые непрочитанные сообщения
+      // If a chat with a user is open AND the modal is visible, check for new unread messages
       if (selectedChatUser && selectedChatUser.id && messagesVisible) {
         const messages = messagesData.messages || {};
-        // Находим userId по ключу в messagesUsers
+        // Find userId by key in messagesUsers
         const userId = Object.keys(users).find(id => {
           const user = users[id];
           return user?.id === selectedChatUser.id || id === String(selectedChatUser.id);
@@ -157,14 +180,14 @@ export default function ProfileScreen() {
         const userMessages = messages[userId] || [];
         const userIdNum = typeof userId === 'string' ? parseInt(userId, 10) : parseInt(String(userId), 10);
         
-        // Проверяем, есть ли входящие непрочитанные сообщения от этого пользователя (sender_id === userId и is_read: 0)
+        // Check for incoming unread messages from this user (sender_id === userId and is_read: 0)
         const hasUnread = Array.isArray(userMessages) && userMessages.some((message) => {
           return message && 
                  message.sender_id === userIdNum && 
                  message.is_read === 0;
         });
         
-        // Если есть непрочитанные сообщения, отправляем запрос о прочтении
+        // If there are unread messages, send a read receipt request
         if (hasUnread) {
           (async () => {
             try {
@@ -181,23 +204,23 @@ export default function ProfileScreen() {
           })();
         }
         
-        // Проверяем, появились ли новые сообщения (больше чем было раньше)
+        // Check whether new messages arrived (more than before)
         const currentMessageCount = Array.isArray(userMessages) ? userMessages.length : 0;
         const previousMessageCount = lastMessageCountRef.current;
         
-        // Автоскролл вниз только если появились новые сообщения
+        // Auto-scroll down only if new messages arrived
         if (currentMessageCount > previousMessageCount) {
           setTimeout(() => {
             scrollViewRef.current?.scrollToEnd({ animated: true });
           }, 100);
         }
         
-        // Обновляем счетчик сообщений
+        // Update the message counter
         lastMessageCountRef.current = currentMessageCount;
       }
     });
 
-    // Очищаем callback при размонтировании
+    // Clear the callback on unmount
     return () => {
       setMessagesCallback(null);
     };
@@ -215,13 +238,15 @@ export default function ProfileScreen() {
       return;
     }
 
-    // Запрашиваем данные с сервера
+    setLoading(true);
+
+    // Fetch data from the server
     const result = await getSelf(token);
     
     if (result.status === 'success') {
       const userData = result.data;
       setUserData(userData);
-      // Инициализируем поля редактирования
+      // Initialize the editable fields
       setName(userData.name || '');
       setAge(userData.age?.toString() || '');
       setSex(userData.sex || '');
@@ -231,13 +256,15 @@ export default function ProfileScreen() {
       setIsOnline(onlineStatus);
       if (onlineStatus) {
         enableUsersOnlinePolling();
+        startLocationTracking();
       } else {
         disableUsersOnlinePolling();
+        stopLocationTracking();
       }
-      // Сохраняем данные для кэша
+      // Save data to the cache
       await saveUserData(userData);
       
-      // Запускаем интервал получения сообщений (всегда, если пользователь залогинен)
+      // Start the messages polling interval (always, if the user is logged in)
       startMessagesInterval();
       
     } else {
@@ -251,14 +278,43 @@ export default function ProfileScreen() {
     setLoading(false);
   };
 
+  // Syncs the online status with the server without touching the editable fields
+  const refreshOnlineStatus = async () => {
+    const token = await getToken();
+    if (!token) return;
+
+    const result = await getSelf(token);
+    if (result.status !== 'success') return;
+
+    const onlineStatus = result.data.is_online === 1;
+    setUserData(result.data);
+
+    if (onlineStatus) {
+      enableUsersOnlinePolling();
+      startLocationTracking();
+    } else {
+      disableUsersOnlinePolling();
+      stopLocationTracking();
+      if (isOnlineRef.current) {
+        Toast.show({
+          type: 'info',
+          text1: 'Offline',
+          text2: 'You were set offline due to inactivity',
+        });
+      }
+    }
+    setIsOnline(onlineStatus);
+  };
+
   const handleLogout = async () => {
     try {
-      // Гарантированно выключаем запросы пользователей
+      // Make sure online users polling and location tracking are turned off
       disableUsersOnlinePolling();
-      // Останавливаем интервал получения сообщений
+      stopLocationTracking();
+      // Stop the messages polling interval
       stopMessagesInterval();
 
-      // Если пользователь онлайн, сначала отправляем запрос о переходе в оффлайн
+      // If the user is online, first send a request to go offline
       if (isOnline) {
         const token = await getToken();
         if (token) {
@@ -273,12 +329,12 @@ export default function ProfileScreen() {
             await getOnline(data);
           } catch (error) {
             console.error('Error setting offline status on logout:', error);
-            // Продолжаем выход даже если не удалось отправить статус оффлайн
+            // Continue logging out even if the offline status could not be sent
           }
         }
       }
 
-      // Теперь выполняем выход
+      // Now log out
       await removeToken();
       Toast.show({
         type: 'success',
@@ -288,7 +344,7 @@ export default function ProfileScreen() {
       router.replace('/');
     } catch (error) {
       console.error('Error during logout:', error);
-      // В любом случае выполняем выход
+      // Log out in any case
       await removeToken();
       router.replace('/');
     }
@@ -296,7 +352,7 @@ export default function ProfileScreen() {
 
   const openFileDialog = async () => {
     try {
-      // Запрашиваем разрешение на доступ к медиатеке
+      // Request media library permission
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         Toast.show({
@@ -307,9 +363,9 @@ export default function ProfileScreen() {
         return;
       }
 
-      // Открываем выбор фото
+      // Open the photo picker
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: false,
         quality: 1,
       });
@@ -334,7 +390,7 @@ export default function ProfileScreen() {
     try {
       setUploading(true);
 
-      // Создаем квадратный кроп (используем минимальный размер для квадрата)
+      // Create a square crop (use the smaller side for the square)
       const size = Math.min(cropData.width, cropData.height);
       
       const croppedImage = await ImageManipulator.manipulateAsync(
@@ -361,7 +417,7 @@ export default function ProfileScreen() {
         }
       );
 
-      // Загружаем фото
+      // Upload the photo
       const token = await getToken();
       if (!token) {
         Toast.show({
@@ -387,7 +443,7 @@ export default function ProfileScreen() {
           text2: response?.data?.message || 'Photo uploaded',
         });
 
-        // Обновляем данные пользователя
+        // Refresh user data
         const selfResult = await getSelf(token);
         if (selfResult.status === 'success') {
           setUserData(selfResult.data);
@@ -437,7 +493,8 @@ export default function ProfileScreen() {
       }
 
       if (isOnline) {
-        // Переключаемся на оффлайн
+        // Switch to offline. Stop tracking first so a pending send cannot mark the user online again
+        stopLocationTracking();
         const data = {
           token: token,
           is_online: 0,
@@ -448,20 +505,21 @@ export default function ProfileScreen() {
         const response = await getOnline(data);
         if (response.status === 'success') {
           setIsOnline(false);
-          disableUsersOnlinePolling(); // Останавливаем запросы онлайн-пользователей
+          disableUsersOnlinePolling(); // Stop online users polling
           Toast.show({
             type: 'info',
             text1: 'Offline',
             text2: 'You are now offline',
           });
 
-          // Обновляем данные пользователя
+          // Refresh user data
           const selfResult = await getSelf(token);
           if (selfResult.status === 'success') {
             setUserData(selfResult.data);
             await saveUserData(selfResult.data);
           }
         } else {
+          startLocationTracking();
           Toast.show({
             type: 'error',
             text1: 'Error',
@@ -469,63 +527,31 @@ export default function ProfileScreen() {
           });
         }
       } else {
-        // Проверяем наличие всех обязательных данных перед переходом в онлайн
-        if (!userData?.image) {
+        // Check that all required data is present before going online:
+        // the same rules as for saving, plus photo and thoughts
+        const validationError = !userData?.image
+          ? 'A profile photo is required'
+          : getProfileError() ?? (thoughts.trim().length === 0 ? 'Please share your thoughts' : null);
+
+        if (validationError) {
           Toast.show({
             type: 'error',
             text1: 'Error',
-            text2: 'A profile photo is required',
+            text2: validationError,
           });
           return;
         }
 
-        if (!name || name.trim().length === 0) {
-          Toast.show({
-            type: 'error',
-            text1: 'Error',
-            text2: 'Name is required',
-          });
-          return;
+        // Send unsaved changes to the server first,
+        // otherwise other users will see the old profile
+        if (hasUnsavedChanges()) {
+          const saved = await saveProfile(token);
+          if (!saved) {
+            return;
+          }
         }
 
-        if (!age || age.trim().length === 0) {
-          Toast.show({
-            type: 'error',
-            text1: 'Error',
-            text2: 'Age is required',
-          });
-          return;
-        }
-
-        const ageNum = parseInt(age, 10);
-        if (isNaN(ageNum) || ageNum < 18 || ageNum > 90) {
-          Toast.show({
-            type: 'error',
-            text1: 'Error',
-            text2: 'Age must be between 18 and 90',
-          });
-          return;
-        }
-
-        if (!sex || sex.trim().length === 0) {
-          Toast.show({
-            type: 'error',
-            text1: 'Error',
-            text2: 'Please select your gender',
-          });
-          return;
-        }
-
-        if (!thoughts || thoughts.trim().length === 0) {
-          Toast.show({
-            type: 'error',
-            text1: 'Error',
-            text2: 'Please share your thoughts',
-          });
-          return;
-        }
-
-        // Переключаемся на онлайн - запрашиваем геолокацию
+        // Switch to online - request location
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
           Toast.show({
@@ -550,21 +576,22 @@ export default function ProfileScreen() {
         const response = await getOnline(data);
         if (response.status === 'success') {
           setIsOnline(true);
-          enableUsersOnlinePolling(); // Возобновляем запросы онлайн-пользователей
+          enableUsersOnlinePolling(); // Resume online users polling
+          startLocationTracking();
           Toast.show({
             type: 'success',
             text1: 'Online',
             text2: 'You are now online',
           });
 
-          // Обновляем данные пользователя
+          // Refresh user data
           const selfResult = await getSelf(token);
           if (selfResult.status === 'success') {
             setUserData(selfResult.data);
             await saveUserData(selfResult.data);
           }
 
-          // Переходим на страницу карты (интервал будет запущен там)
+          // Go to the map screen (the interval is started there)
           router.replace('/map');
         } else {
           Toast.show({
@@ -586,91 +613,85 @@ export default function ProfileScreen() {
     }
   };
 
-  // Функция для проверки валидности формы
-  const isFormValid = () => {
-    // Проверка имени
+  // Validate profile fields. Returns an error message, or null if everything is fine
+  const getProfileError = (): string | null => {
     if (!name || name.trim().length === 0) {
-      return false;
+      return 'Name is required';
     }
 
-    // Проверка возраста
     if (!age || age.trim().length === 0) {
-      return false;
+      return 'Age is required';
     }
     const ageNum = parseInt(age, 10);
     if (isNaN(ageNum) || ageNum < 18 || ageNum > 90) {
-      return false;
+      return 'Age must be between 18 and 90';
     }
 
-    // Проверка пола
     if (!sex || sex.trim().length === 0) {
+      return 'Please select your gender';
+    }
+
+    if (!description || description.trim().length === 0) {
+      return 'Description is required';
+    }
+    if (description.trim().length < 10) {
+      return 'Description must be at least 10 characters';
+    }
+
+    return null;
+  };
+
+  // Checks whether the form is valid
+  const isFormValid = () => getProfileError() === null;
+
+  // Whether the form fields differ from the profile saved on the server
+  const hasUnsavedChanges = () =>
+    name.trim() !== (userData?.name || '') ||
+    age !== (userData?.age?.toString() || '') ||
+    sex !== (userData?.sex || '') ||
+    description.trim() !== (userData?.description || '') ||
+    thoughts.trim() !== (userData?.thoughts || '');
+
+  // Sends profile fields to the server and refreshes userData. Returns whether it succeeded
+  const saveProfile = async (token: string): Promise<boolean> => {
+    const data = {
+      name: name.trim(),
+      age: parseInt(age, 10),
+      sex: sex,
+      description: description.trim(),
+      thoughts: thoughts ? thoughts.trim() : '',
+      email: userData?.email || '',
+      token: token,
+    };
+
+    const response = await editProfile(data);
+
+    if (response.status !== 'success') {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: response?.data?.message || 'Failed to update profile',
+      });
       return false;
     }
 
-    // Проверка описания - минимум 10 символов
-    if (!description || description.trim().length < 10) {
-      return false;
+    // Refresh user data
+    const selfResult = await getSelf(token);
+    if (selfResult.status === 'success') {
+      setUserData(selfResult.data);
+      await saveUserData(selfResult.data);
     }
 
     return true;
   };
 
   const handleSaveDetails = async () => {
-    // Валидация имени - обязательно
-    if (!name || name.trim().length === 0) {
+    const validationError = getProfileError();
+    if (validationError) {
       Toast.show({
         type: 'error',
         text1: 'Error',
-        text2: 'Name is required',
-      });
-      return;
-    }
-
-    // Валидация возраста - обязательно, от 18 до 90
-    if (!age || age.trim().length === 0) {
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Age is required',
-      });
-      return;
-    }
-
-    const ageNum = parseInt(age, 10);
-    if (isNaN(ageNum) || ageNum < 18 || ageNum > 90) {
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Age must be between 18 and 90',
-      });
-      return;
-    }
-
-    // Валидация пола - обязательно
-    if (!sex || sex.trim().length === 0) {
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Please select your gender',
-      });
-      return;
-    }
-
-    // Валидация описания - обязательно, минимум 10 символов
-    if (!description || description.trim().length === 0) {
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Description is required',
-      });
-      return;
-    }
-
-    if (description.trim().length < 10) {
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Description must be at least 10 characters',
+        text2: validationError,
       });
       return;
     }
@@ -687,36 +708,11 @@ export default function ProfileScreen() {
         return;
       }
 
-      const data = {
-        name: name.trim(),
-        age: parseInt(age, 10),
-        sex: sex,
-        description: description.trim(),
-        thoughts: thoughts ? thoughts.trim() : '',
-        email: userData?.email || '',
-        token: token,
-      };
-
-      const response = await editProfile(data);
-
-      if (response.status === 'success') {
+      if (await saveProfile(token)) {
         Toast.show({
           type: 'success',
           text1: 'Success',
-          text2: response?.data?.message || 'Profile updated',
-        });
-
-        // Обновляем данные пользователя
-        const selfResult = await getSelf(token);
-        if (selfResult.status === 'success') {
-          setUserData(selfResult.data);
-          await saveUserData(selfResult.data);
-        }
-      } else {
-        Toast.show({
-          type: 'error',
-          text1: 'Error',
-          text2: response?.data?.message || 'Failed to update profile',
+          text2: 'Profile updated',
         });
       }
     } catch (error) {
@@ -731,13 +727,13 @@ export default function ProfileScreen() {
     }
   };
 
-  // Функция для подсчета непрочитанных сообщений от конкретного пользователя
+  // Counts unread messages from a specific user
   const getUnreadCountForUser = (userId: string | number): number => {
     const messages = messagesData.messages || {};
     const userMessages = messages[userId] || [];
     const userIdNum = typeof userId === 'string' ? parseInt(userId, 10) : userId;
     
-    // Подсчитываем только входящие непрочитанные сообщения (sender_id === userId и is_read === 0)
+    // Count only incoming unread messages (sender_id === userId and is_read === 0)
     if (!Array.isArray(userMessages)) {
       return 0;
     }
@@ -749,12 +745,12 @@ export default function ProfileScreen() {
     }).length;
   };
 
-  // Функция для получения сообщений от конкретного пользователя
+  // Returns messages with a specific user
   const getMessagesForUser = (userId: string | number): any[] => {
     const messages = messagesData.messages || {};
     const userMessages = messages[userId] || [];
     
-    // Если это массив, сортируем по created_at
+    // If it is an array, sort by created_at
     if (!Array.isArray(userMessages)) {
       return [];
     }
@@ -766,7 +762,7 @@ export default function ProfileScreen() {
     });
   };
 
-  // Функция для отправки сообщения
+  // Sends a message
   const handleSendMessage = async () => {
     if (!messageText.trim() || !selectedChatUser || sendingMessage) {
       return;
@@ -782,7 +778,7 @@ export default function ProfileScreen() {
       const result = await sendMessage(token, selectedChatUser.id, messageText.trim());
       if (result.status === 'success') {
         setMessageText('');
-        // Прокручиваем вниз после отправки
+        // Scroll down after sending
         setTimeout(() => {
           scrollViewRef.current?.scrollToEnd({ animated: true });
         }, 100);
@@ -795,16 +791,18 @@ export default function ProfileScreen() {
   };
 
 
-  // Функция для возврата к списку пользователей
+  // Returns to the users list
   const handleBackToUsers = () => {
     setSelectedChatUser(null);
-    // Сбрасываем счетчик сообщений при возврате к списку
+    // Reset the message counter when returning to the list
     lastMessageCountRef.current = 0;
   };
 
-  // Функция для показа пользователя на карте (переход на страницу карты)
+  // Shows the user on the map (navigates to the map screen)
   const handleShowOnMap = (userId: number) => {
-    router.push({
+    // replace, not push: the profile must not stay mounted under the map, since the polling
+    // services keep a single callback and the map clears it when it closes
+    router.replace({
       pathname: '/map',
       params: { focusUserId: String(userId) }
     });
@@ -818,10 +816,28 @@ export default function ProfileScreen() {
     );
   }
 
+  // Profile failed to load (no network, server error) - let the user retry or log out
+  if (!userData) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.loadErrorText}>Failed to load profile</Text>
+        <Pressable style={styles.saveButton} onPress={checkAuth}>
+          <Text style={styles.saveButtonText}>Retry</Text>
+        </Pressable>
+        <Pressable style={styles.logoutButton} onPress={handleLogout}>
+          <Text style={styles.logoutButtonText}>Logout</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      {/* Header с иконками карты, заголовка и сообщений */}
-      <View style={styles.header}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      {/* Header with map icon, title and messages icon */}
+      <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
         <Pressable
           style={styles.mapIconButton}
           onPress={() => {
@@ -847,7 +863,7 @@ export default function ProfileScreen() {
           style={styles.messageButton}
           onPress={() => {
             setMessagesVisible(true);
-            // Устанавливаем значение в 0, чтобы плашка появилась (translateY = 0)
+            // Set the value to 0 so the panel appears (translateY = 0)
             slideAnim.value = withSpring(0);
           }}
         >
@@ -864,15 +880,15 @@ export default function ProfileScreen() {
         </Pressable>
       </View>
       
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         {/*<Text style={styles.title}>People Meet</Text>*/}
 
         <View style={styles.card}>
-          <Text style={styles.cardHeader}>Профиль</Text>
+          <Text style={styles.cardHeader}>Profile</Text>
 
           {userData && (
               <View style={styles.userInfo}>
-                {/* Фото профиля */}
+                {/* Profile photo */}
                 <View style={styles.imageContainer}>
                   {userData.image ? (
                       <Image
@@ -884,11 +900,11 @@ export default function ProfileScreen() {
                       />
                   ) : (
                       <View style={[styles.placeholderImage, { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }]}>
-                        <Text style={styles.placeholderText}>Нет фото</Text>
+                        <Text style={styles.placeholderText}>No photo</Text>
                       </View>
                   )}
                   
-                  {/* Кнопка Upload Photo */}
+                  {/* Upload Photo button */}
                   <Pressable
                     style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
                     onPress={cropMode ? undefined : openFileDialog}
@@ -898,14 +914,14 @@ export default function ProfileScreen() {
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
                       <Text style={styles.uploadButtonText}>
-                        {cropMode ? 'Обработка...' : 'Upload Photo'}
+                        {cropMode ? 'Processing...' : 'Upload Photo'}
                       </Text>
                     )}
                   </Pressable>
                 </View>
-                {/* Статус онлайн */}
+                {/* Online status */}
                 <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Статус:</Text>
+                  <Text style={styles.infoLabel}>Status:</Text>
                   <View style={styles.switchContainer}>
                     <Text style={styles.switchLabel}>
                       {isOnline ? 'Online' : 'Offline'}
@@ -924,34 +940,34 @@ export default function ProfileScreen() {
                 </View>
 
 
-                {/* Основная информация */}
+                {/* Main info */}
                 <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Имя:</Text>
+                  <Text style={styles.infoLabel}>Name:</Text>
                   <TextInput
                     style={styles.input}
                     value={name}
                     onChangeText={setName}
-                    placeholder="Введите имя"
+                    placeholder="Enter your name"
                     placeholderTextColor="#999"
                   />
                 </View>
 
                 {/*<View style={styles.infoRow}>*/}
                 {/*  <Text style={styles.infoLabel}>Email:</Text>*/}
-                {/*  <Text style={styles.infoValue}>{userData.email || 'Не указано'}</Text>*/}
+                {/*  <Text style={styles.infoValue}>{userData.email || 'Not specified'}</Text>*/}
                 {/*</View>*/}
 
                 <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Возраст (18-90):</Text>
+                  <Text style={styles.infoLabel}>Age (18-90):</Text>
                   <TextInput
                     style={styles.input}
                     value={age}
                     onChangeText={(text) => {
-                      // Разрешаем только цифры
+                      // Allow digits only
                       const numericValue = text.replace(/[^0-9]/g, '');
                       setAge(numericValue);
                     }}
-                    placeholder="Введите возраст"
+                    placeholder="Enter your age"
                     placeholderTextColor="#999"
                     keyboardType="numeric"
                     maxLength={2}
@@ -959,28 +975,28 @@ export default function ProfileScreen() {
                 </View>
 
                 <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Пол:</Text>
+                  <Text style={styles.infoLabel}>Gender:</Text>
                   <View style={styles.pickerContainer}>
                     <Picker
                       selectedValue={sex}
                       onValueChange={(itemValue: string) => setSex(itemValue)}
                       style={styles.picker}
                     >
-                      <Picker.Item label="Выберите пол" value="" />
-                      <Picker.Item label="Мужской" value="male" />
-                      <Picker.Item label="Женский" value="female" />
+                      <Picker.Item label="Select gender" value="" />
+                      <Picker.Item label="Male" value="male" />
+                      <Picker.Item label="Female" value="female" />
                     </Picker>
                   </View>
                 </View>
 
-                {/* Описание */}
+                {/* Description */}
                 <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Описание:</Text>
+                  <Text style={styles.infoLabel}>Description:</Text>
                   <TextInput
                     style={[styles.input, styles.textArea]}
                     value={description}
                     onChangeText={setDescription}
-                    placeholder="Введите описание (минимум 10 символов)"
+                    placeholder="Enter a description (at least 10 characters)"
                     placeholderTextColor="#999"
                     multiline
                     numberOfLines={4}
@@ -988,26 +1004,26 @@ export default function ProfileScreen() {
                   />
                   {description && description.trim().length > 0 && description.trim().length < 10 && (
                     <Text style={styles.errorText}>
-                      Описание должно содержать минимум 10 символов ({description.trim().length}/10)
+                      Description must be at least 10 characters ({description.trim().length}/10)
                     </Text>
                   )}
                 </View>
 
-                {/* Мысли */}
+                {/* Thoughts */}
                 <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Мысли:</Text>
+                  <Text style={styles.infoLabel}>Thoughts:</Text>
                   <TextInput
                     style={[styles.input, styles.textArea]}
                     value={thoughts}
                     onChangeText={(text) => {
-                      // Ограничиваем до 21 символов
+                      // Limit to 21 characters
                       if (text.length <= 21) {
                         setThoughts(text);
                       } else {
                         setThoughts(text.substring(0, 21));
                       }
                     }}
-                    placeholder="Введите мысли (максимум 38 символов)"
+                    placeholder="Share your thoughts (up to 21 characters)"
                     placeholderTextColor="#999"
                     multiline
                     numberOfLines={4}
@@ -1019,7 +1035,7 @@ export default function ProfileScreen() {
                       styles.charCountText,
                       thoughts.length >= 21 && styles.charCountTextWarning
                     ]}>
-                      {thoughts.length}/21 символов
+                      {thoughts.length}/21 characters
                     </Text>
                   )}
                 </View>
@@ -1041,7 +1057,7 @@ export default function ProfileScreen() {
             )}
           </Pressable>
 
-          {/*/!* Кнопка для перехода на карту, если онлайн *!/*/}
+          {/*/!* Button to go to the map when online *!/*/}
           {/*{isOnline && (*/}
           {/*  <Pressable */}
           {/*    style={styles.mapButton} */}
@@ -1057,7 +1073,7 @@ export default function ProfileScreen() {
         </View>
       </ScrollView>
 
-      {/* Модальное окно для кропа */}
+      {/* Crop modal */}
       {selectedImageUri && (
         <ImageCropModal
           visible={cropMode}
@@ -1067,7 +1083,7 @@ export default function ProfileScreen() {
         />
       )}
 
-      {/* Плашка сообщений снизу */}
+      {/* Messages panel at the bottom */}
       <MessagesModal
         visible={messagesVisible}
         slideAnim={slideAnim}
@@ -1094,14 +1110,14 @@ export default function ProfileScreen() {
         getUnreadCountForUser={getUnreadCountForUser}
         getMessagesForUser={getMessagesForUser}
         formatMessageTime={formatMessageTime}
-        title="Сообщения"
+        title="Messages"
         getToken={getToken}
         readMessages={readMessages}
         setMessagesData={setMessagesData}
         setUnreadMessagesCount={setUnreadMessagesCount}
         onlineUsers={onlineUsers}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -1115,13 +1131,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  loadErrorText: {
+    fontSize: 16,
+    color: '#333',
+    marginBottom: 10,
+  },
   scrollContent: {
     flexGrow: 1,
     alignItems: 'center',
     padding: 16,
   },
   header: {
-    paddingTop: 50,
     paddingHorizontal: 20,
     paddingBottom: 10,
     backgroundColor: '#fff',

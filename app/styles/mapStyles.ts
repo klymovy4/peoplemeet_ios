@@ -11,7 +11,6 @@ export const mapStyles = StyleSheet.create({
     alignItems: 'center',
   },
   header: {
-    paddingTop: 50,
     paddingHorizontal: 20,
     paddingBottom: 10,
     backgroundColor: '#fff',
@@ -99,15 +98,20 @@ export const mapStyles = StyleSheet.create({
     borderColor: '#FF6B6B',
     backgroundColor: '#fff',
   },
-  markerThoughts: {
+  // Transparent area that limits the bubble's max width. Without it the absolutely
+  // positioned bubble would be squeezed to the avatar's width and wrap word by word
+  markerThoughtsContainer: {
     position: 'absolute',
     top: -40,
     right: -135,
+    width: 150,
+    alignItems: 'flex-start',
+    zIndex: 10,
+  },
+  // The bubble itself shrinks to fit the text
+  markerThoughts: {
     fontSize: 12,
     color: '#333',
-    maxWidth: 150,
-    minWidth: 150,
-    height: 'auto',
     textAlign: 'left',
     fontStyle: 'italic',
     backgroundColor: 'rgba(255, 255, 255, 0.98)',
