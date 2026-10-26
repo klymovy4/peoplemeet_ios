@@ -2,25 +2,86 @@ import { getToken } from '@/services/auth';
 import { getSelf, readMessages, sendMessage, getUsersOnline } from '@/services/api';
 import { enableUsersOnlinePolling, disableUsersOnlinePolling, setUsersOnlineCallback } from '@/services/usersOnlineInterval';
 import { startMessagesInterval, setMessagesCallback } from '@/services/messagesInterval';
+import { startLocationTracking, stopLocationTracking, setLocationCallback } from '@/services/locationTracking';
 import { playMessageSound } from '@/services/soundService';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
-import { ActivityIndicator, Pressable, View, Text, Modal, TouchableWithoutFeedback, ScrollView } from 'react-native';
+import { ActivityIndicator, AppState, Pressable, View, Text, Modal, TouchableWithoutFeedback, ScrollView, Platform, StyleProp, ImageStyle } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSharedValue, withSpring } from 'react-native-reanimated';
 import { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import MapView from 'react-native-map-clustering';
 import MessagesModal from '@/components/MessagesModal';
+import Toast from 'react-native-toast-message';
 import { getImageUrl, parseCoordinate, getUserMarkerColor, calculateDistance, formatMessageTime } from '@/app/utils/utils';
 import { mapStyles } from '@/app/styles/mapStyles';
 
+type AvatarMarkerProps = {
+  coordinate: { latitude: number; longitude: number };
+  identifier?: string;
+  onPress: () => void;
+  imageUri: string | null;
+  avatarStyle: StyleProp<ImageStyle>;
+  thoughts?: string;
+};
+
+// Marker with a custom avatar view. tracksViewChanges stays on only until the avatar
+// is displayed: when it is always on, iOS keeps redrawing every marker and the map lags
+function AvatarMarker({ coordinate, identifier, onPress, imageUri, avatarStyle, thoughts }: AvatarMarkerProps) {
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
+
+  // Without a photo there is nothing to wait for: stop tracking after the first render
+  useEffect(() => {
+    if (imageUri) return;
+    const timer = setTimeout(() => setTracksViewChanges(false), 300);
+    return () => clearTimeout(timer);
+  }, [imageUri]);
+
+  return (
+    <Marker
+      identifier={identifier}
+      coordinate={coordinate}
+      onPress={onPress}
+      tracksViewChanges={tracksViewChanges}
+    >
+      <View style={mapStyles.markerContainer}>
+        {imageUri ? (
+          <Image
+            source={{ uri: imageUri }}
+            style={avatarStyle}
+            contentFit="cover"
+            onDisplay={() => setTracksViewChanges(false)}
+            onError={() => setTracksViewChanges(false)}
+          />
+        ) : (
+          <View style={[avatarStyle, mapStyles.markerAvatarPlaceholder]}>
+            <View style={mapStyles.markerAvatarInner} />
+          </View>
+        )}
+        {thoughts ? (
+          <View style={mapStyles.markerThoughtsContainer}>
+            <Text style={mapStyles.markerThoughts} numberOfLines={2}>
+              {thoughts}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    </Marker>
+  );
+}
+
 export default function MapScreen() {
+  const insets = useSafeAreaInsets();
   const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [messagesVisible, setMessagesVisible] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
-  const [currentUserFromOnline, setCurrentUserFromOnline] = useState<any | null>(null); // Актуальные данные текущего пользователя из online_users
+  const [currentUserFromOnline, setCurrentUserFromOnline] = useState<any | null>(null); // Up-to-date data of the current user from online_users
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
+  // The phone's own position from location tracking; /online_users never includes the current user,
+  // so without it the own marker would stay where it was when the map opened
+  const [liveCoords, setLiveCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [messagesUsers, setMessagesUsers] = useState<any>({});
   const [messagesData, setMessagesData] = useState<any>({});
@@ -28,41 +89,54 @@ export default function MapScreen() {
   const [messageText, setMessageText] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const [showUserInfo, setShowUserInfo] = useState(false);
-  const [fixedRegion, setFixedRegion] = useState<any>(null); // Фиксированная позиция камеры после раскрытия кластера
-  const slideAnim = useSharedValue(1); // Начальное значение 1 = плашка скрыта внизу
+  const slideAnim = useSharedValue(1); // Initial value 1 = panel hidden at the bottom
   const userIdRef = useRef<number | null>(null);
   const scrollViewRef = useRef<ScrollView | null>(null);
-  const lastMessageCountRef = useRef<number>(0); // Храним количество сообщений для проверки новых
-  const previousUnreadCountRef = useRef<number>(0); // Храним предыдущее количество непрочитанных сообщений
-  const previousMessagesRef = useRef<any>({}); // Храним предыдущие сообщения для определения новых
+  const lastMessageCountRef = useRef<number>(0); // Message count, used to detect new messages
+  const previousUnreadCountRef = useRef<number>(0); // Previous unread messages count
+  // Previous messages, used to detect new ones; null means no poll has happened yet
+  const previousMessagesRef = useRef<any>(null);
   const mapViewRef = useRef<any>(null);
-  const currentRegionRef = useRef<any>(null); // Сохраняем текущую позицию камеры
-  const isUserInteractingRef = useRef<boolean>(false); // Флаг, что пользователь управляет камерой
-  const isUpdatingDataRef = useRef<boolean>(false); // Флаг, что происходит обновление данных
-  const isClusterExpandingRef = useRef<boolean>(false); // Флаг, что происходит раскрытие кластера
+  const focusedUserIdRef = useRef<string | null>(null); // focusUserId the map has already been pointed at
+  const openChatAfterCardCloseRef = useRef(false); // Open the messages panel once the user card modal is dismissed
   const params = useLocalSearchParams();
 
   useEffect(() => {
     checkAuth();
 
-    // Очищаем при размонтировании - останавливаем интервал если пользователь уходит со страницы
+    // Clean up on unmount - stop the interval when the user leaves the screen
+    setLocationCallback(setLiveCoords);
+
+    // Location is not tracked in the background; on return the server may have already
+    // set the user offline (no requests for 5 minutes), so re-check the status
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        refreshOnlineStatus();
+      } else if (state === 'background') {
+        stopLocationTracking();
+      }
+    });
+
     return () => {
       console.log('MapScreen: Component unmounting, disabling polling');
+      appStateSubscription.remove();
       disableUsersOnlinePolling();
+      stopLocationTracking();
       setUsersOnlineCallback(null);
+      setLocationCallback(null);
     };
   }, []);
 
   useEffect(() => {
-    // Обновляем ref при изменении userData
+    // Update the ref when userData changes
     if (userData?.id) {
       userIdRef.current = userData.id;
     }
   }, [userData?.id]);
 
   useEffect(() => {
-    // Устанавливаем callback для получения онлайн пользователей
-    // Используем функциональное обновление состояния для гарантии актуальности
+    // Set the callback for receiving online users
+    // Use a functional state update to make sure the state is current
     setUsersOnlineCallback((users) => {
       const currentUserId = userIdRef.current;
       console.log('MapScreen: Received online users data:', users);
@@ -76,7 +150,7 @@ export default function MapScreen() {
       
       let usersArray: any[] = [];
       
-      // Обрабатываем разные форматы ответа
+      // Handle different response formats
       if (Array.isArray(users)) {
         usersArray = users;
       } else if (users.users && Array.isArray(users.users)) {
@@ -85,14 +159,14 @@ export default function MapScreen() {
         usersArray = users.data;
       }
       
-      // Находим данные текущего пользователя в ответе и сохраняем отдельно
-      // Это гарантирует использование актуальных данных из последнего запроса
+      // Find the current user's data in the response and store it separately
+      // This guarantees the data from the latest request is used
       const currentUserData = usersArray.find((user: any) => {
         const userId = user.id || user.user_id;
         return userId === currentUserId;
       });
       
-      // Сохраняем актуальные данные текущего пользователя из online_users
+      // Store the current user's up-to-date data from online_users
       if (currentUserData) {
         const parsedCurrentUser = {
           ...currentUserData,
@@ -103,13 +177,13 @@ export default function MapScreen() {
         setCurrentUserFromOnline(parsedCurrentUser);
       }
       
-      // Фильтруем текущего пользователя из списка других пользователей и проверяем валидность данных
+      // Filter the current user out of the list of other users and validate the data
       const filteredUsers = usersArray
         .filter((user: any) => {
           const userId = user.id || user.user_id;
-          // Проверяем, что пользователь не текущий и данные валидны
+          // Check that the user is not the current one and the data is valid
           if (userId === currentUserId) return false;
-          // Проверяем наличие координат
+          // Check that coordinates are present
           const lat = parseCoordinate(user.lat);
           const lng = parseCoordinate(user.lng);
           return lat !== null && lng !== null;
@@ -117,33 +191,34 @@ export default function MapScreen() {
         .map((user: any) => ({
           ...user,
           id: user.id || user.user_id,
-          // Убеждаемся, что координаты валидны
+          // Make sure the coordinates are valid
           lat: parseCoordinate(user.lat),
           lng: parseCoordinate(user.lng),
         }));
 
-      // Всегда обновляем состояние новыми данными из online_users
-      // Это гарантирует, что маркеры используют актуальные данные (thoughts, image и т.д.)
-      // Используем небольшую задержку для предотвращения крашей при быстрых обновлениях
-      isUpdatingDataRef.current = true;
+      // Always update state with fresh data from online_users
+      // This ensures markers use up-to-date data (thoughts, image, etc.)
+      // Use a small delay to prevent crashes on rapid updates
       setTimeout(() => {
         setOnlineUsers(filteredUsers);
-        setTimeout(() => {
-          isUpdatingDataRef.current = false;
-        }, 200);
       }, 50);
     });
 
-    // Очищаем callback при размонтировании (дублирующий cleanup уже есть в первом useEffect)
+    // Clear the callback on unmount (a duplicate cleanup already exists in the first useEffect)
     return () => {
       setUsersOnlineCallback(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Обработка параметра focusUserId для фокуса на маркер пользователя
+  // Handle the focusUserId param to focus on a user's marker
   useEffect(() => {
     const focusUserId = params.focusUserId;
+    // onlineUsers refresh every 3 seconds: point the map at the user only once,
+    // otherwise the camera keeps jumping back and the map cannot be moved
+    if (typeof focusUserId === 'string' && focusUserId === focusedUserIdRef.current) {
+      return;
+    }
     if (focusUserId && onlineUsers.length > 0 && mapViewRef.current) {
       const userId = typeof focusUserId === 'string' ? parseInt(focusUserId, 10) : focusUserId;
       const user = onlineUsers.find((u: any) => (u.id || u.user_id) === userId);
@@ -153,7 +228,8 @@ export default function MapScreen() {
         const userLng = parseCoordinate(user.lng);
         
         if (userLat !== null && userLng !== null) {
-          // Наводим карту на маркер пользователя
+          focusedUserIdRef.current = String(focusUserId);
+          // Point the map at the user's marker
           setTimeout(() => {
             mapViewRef.current?.animateToRegion({
               latitude: userLat,
@@ -168,7 +244,7 @@ export default function MapScreen() {
   }, [params.focusUserId, onlineUsers]);
 
   useEffect(() => {
-    // Устанавливаем callback для получения сообщений
+    // Set the callback for receiving messages
     setMessagesCallback((messagesData) => {
       console.log('MapScreen: Received messages data:', messagesData);
       
@@ -179,8 +255,10 @@ export default function MapScreen() {
         return;
       }
       
-      // Подсчитываем количество пользователей с непрочитанными сообщениями
+      // Count users with unread messages
       const messages = messagesData.messages || {};
+      // On the first poll every existing unread message would look new - do not play a sound for them
+      const isFirstPoll = previousMessagesRef.current === null;
       const previousMessages = previousMessagesRef.current || {};
       let usersWithUnreadCount = 0;
       let shouldPlaySound = false;
@@ -190,7 +268,7 @@ export default function MapScreen() {
         const userIdNum = parseInt(userId, 10);
         const previousUserMessages = previousMessages[userId] || [];
         
-        // Проверяем, есть ли хотя бы одно входящее непрочитанное сообщение (sender_id === userId и is_read: 0)
+        // Check whether there is at least one incoming unread message (sender_id === userId and is_read: 0)
         const hasUnread = Array.isArray(userMessages) && userMessages.some((message) => {
           return message && 
                  message.sender_id === userIdNum && 
@@ -201,15 +279,15 @@ export default function MapScreen() {
           usersWithUnreadCount++;
         }
         
-        // Проверяем, есть ли новые непрочитанные сообщения от этого пользователя
+        // Check for new unread messages from this user
         if (Array.isArray(userMessages) && Array.isArray(previousUserMessages)) {
-          // Находим новые непрочитанные сообщения (is_read: 0 и sender_id === userIdNum)
+          // Find new unread messages (is_read: 0 and sender_id === userIdNum)
           const newUnreadMessages = userMessages.filter((message) => {
             if (!message || message.sender_id !== userIdNum || message.is_read !== 0) {
               return false;
             }
             
-            // Проверяем, что это сообщение не было в предыдущих сообщениях
+            // Check that this message was not among the previous messages
             const messageExists = previousUserMessages.some((prevMessage) => {
               return prevMessage && prevMessage.id === message.id;
             });
@@ -217,7 +295,7 @@ export default function MapScreen() {
             return !messageExists;
           });
           
-          // Если есть новые непрочитанные сообщения и диалог с этим пользователем не открыт
+          // If there are new unread messages and the chat with this user is not open
           if (newUnreadMessages.length > 0) {
             const isDialogOpen = messagesVisible && selectedChatUser && 
               (selectedChatUser.id === userIdNum || String(selectedChatUser.id) === userId);
@@ -229,25 +307,25 @@ export default function MapScreen() {
         }
       });
       
-      // Воспроизводим звук, если есть новые непрочитанные сообщения и диалог не открыт
-      if (shouldPlaySound) {
+      // Play a sound if there are new unread messages and the chat is not open
+      if (shouldPlaySound && !isFirstPoll) {
         playMessageSound();
       }
       
-      // Сохраняем текущие сообщения для следующей проверки
+      // Store current messages for the next check
       previousMessagesRef.current = messages;
       previousUnreadCountRef.current = usersWithUnreadCount;
       setUnreadMessagesCount(usersWithUnreadCount);
       
-      // Сохраняем данные о пользователях и сообщениях
+      // Store users and messages data
       const users = messagesData.users || {};
       setMessagesUsers(users);
       setMessagesData(messagesData);
       
-      // Если чат открыт с пользователем И модальное окно видимо, проверяем есть ли новые непрочитанные сообщения
+      // If a chat with a user is open AND the modal is visible, check for new unread messages
       if (selectedChatUser && selectedChatUser.id && messagesVisible) {
         const messages = messagesData.messages || {};
-        // Находим userId по ключу в messagesUsers
+        // Find userId by key in messagesUsers
         const userId = Object.keys(users).find(id => {
           const user = users[id];
           return user?.id === selectedChatUser.id || id === String(selectedChatUser.id);
@@ -256,14 +334,14 @@ export default function MapScreen() {
         const userMessages = messages[userId] || [];
         const userIdNum = typeof userId === 'string' ? parseInt(userId, 10) : parseInt(String(userId), 10);
         
-        // Проверяем, есть ли входящие непрочитанные сообщения от этого пользователя (sender_id === userId и is_read: 0)
+        // Check for incoming unread messages from this user (sender_id === userId and is_read: 0)
         const hasUnread = Array.isArray(userMessages) && userMessages.some((message) => {
           return message && 
                  message.sender_id === userIdNum && 
                  message.is_read === 0;
         });
         
-        // Если есть непрочитанные сообщения, отправляем запрос о прочтении
+        // If there are unread messages, send a read receipt request
         if (hasUnread) {
           (async () => {
             try {
@@ -280,23 +358,23 @@ export default function MapScreen() {
           })();
         }
         
-        // Проверяем, появились ли новые сообщения (больше чем было раньше)
+        // Check whether new messages arrived (more than before)
         const currentMessageCount = Array.isArray(userMessages) ? userMessages.length : 0;
         const previousMessageCount = lastMessageCountRef.current;
         
-        // Автоскролл вниз только если появились новые сообщения
+        // Auto-scroll down only if new messages arrived
         if (currentMessageCount > previousMessageCount) {
           setTimeout(() => {
             scrollViewRef.current?.scrollToEnd({ animated: true });
           }, 100);
         }
         
-        // Обновляем счетчик сообщений
+        // Update the message counter
         lastMessageCountRef.current = currentMessageCount;
       }
     });
 
-    // Очищаем callback при размонтировании
+    // Clear the callback on unmount
     return () => {
       setMessagesCallback(null);
     };
@@ -309,35 +387,38 @@ export default function MapScreen() {
       return;
     }
 
-    // Запрашиваем данные с сервера
+    // Fetch data from the server
     const result = await getSelf(token);
 
     if (result.status === 'success') {
       setUserData(result.data);
 
-      // Запускаем интервал получения сообщений (всегда, если пользователь залогинен)
+      // Start the messages polling interval (always, if the user is logged in)
       startMessagesInterval();
 
-      // Если пользователь не онлайн, перенаправляем на профиль и выключаем запросы
+      // If the user is not online, redirect to the profile and stop polling
       if (result.data.is_online !== 1) {
         console.log('MapScreen: User is offline, disabling polling and redirecting to profile');
         disableUsersOnlinePolling();
+        stopLocationTracking();
         router.replace('/profile');
         return;
       }
 
-      // Если пользователь онлайн, запускаем запросы пользователей
+      // If the user is online, start users polling
       const onlineStatus = result.data.is_online === 1;
       if (onlineStatus) {
         console.log('MapScreen: User is online, enabling polling');
         enableUsersOnlinePolling();
-        // Первый запрос будет сделан автоматически в startInterval, если callback установлен
+        startLocationTracking();
+        // The first request is made automatically in startInterval if the callback is set
       } else {
         console.log('MapScreen: User is offline, disabling polling');
         disableUsersOnlinePolling();
+        stopLocationTracking();
       }
     } else {
-      // Если не удалось получить данные, перенаправляем на профиль
+      // If the data could not be fetched, redirect to the profile
       router.replace('/profile');
       return;
     }
@@ -345,68 +426,95 @@ export default function MapScreen() {
     setLoading(false);
   };
 
+  // Called when the app returns to the foreground
+  const refreshOnlineStatus = async () => {
+    const token = await getToken();
+    if (!token) return;
 
-  // Используем актуальные данные текущего пользователя из online_users, если они есть
-  // Иначе используем данные из userData (при первой загрузке)
+    const result = await getSelf(token);
+    // A network error on resume is not a reason to leave the map: keep going as before
+    if (result.status === 'success' && result.data.is_online !== 1) {
+      disableUsersOnlinePolling();
+      stopLocationTracking();
+      Toast.show({
+        type: 'info',
+        text1: 'Offline',
+        text2: 'You were set offline due to inactivity',
+      });
+      router.replace('/profile');
+      return;
+    }
+
+    if (result.status === 'success') {
+      setUserData(result.data);
+    }
+    enableUsersOnlinePolling();
+    startLocationTracking();
+  };
+
+
+  // Use the current user's up-to-date data from online_users, if available
+  // Otherwise use data from userData (on first load)
   const currentUserData = currentUserFromOnline || userData;
-  const userLat = parseCoordinate(currentUserData?.lat);
-  const userLng = parseCoordinate(currentUserData?.lng);
+  // The live position from the phone takes priority over the one stored on the server
+  const userLat = liveCoords?.lat ?? parseCoordinate(currentUserData?.lat);
+  const userLng = liveCoords?.lng ?? parseCoordinate(currentUserData?.lng);
 
   const handleMarkerPress = async (user: any) => {
     const userId = user.id;
     
-    // Сразу ищем актуальные данные пользователя в onlineUsers
-    // onlineUsers обновляются каждые 3 секунды и содержат свежую информацию
+    // Look up the user's up-to-date data in onlineUsers right away
+    // onlineUsers refresh every 3 seconds and hold fresh info
     const actualUser = onlineUsers.find((u: any) => {
       const uId = u.id || u.user_id;
       return uId === userId || String(uId) === String(userId);
     });
     
-    // Если нашли актуальные данные в onlineUsers, используем их
+    // If up-to-date data was found in onlineUsers, use it
     if (actualUser) {
-      // Объединяем данные: приоритет у актуальных данных из onlineUsers
+      // Merge data: up-to-date data from onlineUsers takes priority
       const updatedUser = {
-        ...user, // Базовые данные из маркера
-        ...actualUser, // Актуальные данные из onlineUsers (перезаписывают старые)
-        id: userId, // Сохраняем id
-        lat: actualUser.lat || user.lat, // Сохраняем координаты
+        ...user, // Base data from the marker
+        ...actualUser, // Up-to-date data from onlineUsers (overrides old data)
+        id: userId, // Keep the id
+        lat: actualUser.lat || user.lat, // Keep coordinates
         lng: actualUser.lng || user.lng,
       };
       setSelectedUser(updatedUser);
     } else {
-      // Если пользователя нет в onlineUsers, проверяем messagesUsers
+      // If the user is not in onlineUsers, check messagesUsers
       const userIdKey = Object.keys(messagesUsers).find(id => {
         const msgUser = messagesUsers[id];
         return msgUser && (msgUser.id === userId || String(msgUser.id) === String(userId) || id === String(userId));
       });
       
       if (userIdKey && messagesUsers[userIdKey]) {
-        // Объединяем данные из messagesUsers
+        // Merge data from messagesUsers
         const updatedUser = {
           ...user,
           ...messagesUsers[userIdKey],
           id: userId,
-          lat: user.lat, // Сохраняем координаты из маркера
+          lat: user.lat, // Keep coordinates from the marker
           lng: user.lng,
         };
         setSelectedUser(updatedUser);
       } else {
-        // Используем данные из маркера как есть
+        // Use the marker data as is
         setSelectedUser(user);
       }
     }
     
-    // Дополнительно: запрашиваем свежие данные через API для гарантии актуальности
-    // Это полезно если пользователь только что изменил данные
+    // Additionally: fetch fresh data via the API to make sure it is current
+    // Useful if the user has just changed their data
     try {
       const token = await getToken();
       if (token && userId) {
-        // Запрашиваем актуальный список пользователей
+        // Fetch the current users list
         const freshUsers = await getUsersOnline(token);
         if (freshUsers) {
           let usersArray: any[] = [];
           
-          // Обрабатываем разные форматы ответа
+          // Handle different response formats
           if (Array.isArray(freshUsers)) {
             usersArray = freshUsers;
           } else if (freshUsers.users && Array.isArray(freshUsers.users)) {
@@ -415,17 +523,17 @@ export default function MapScreen() {
             usersArray = freshUsers.data;
           }
           
-          // Ищем пользователя в свежих данных
+          // Find the user in the fresh data
           const freshUser = usersArray.find((u: any) => {
             const uId = u.id || u.user_id;
             return uId === userId || String(uId) === String(userId);
           });
           
-          // Если нашли свежие данные, обновляем selectedUser
+          // If fresh data was found, update selectedUser
           if (freshUser) {
             setSelectedUser((prevUser: any) => {
               if (!prevUser || (prevUser.id || prevUser.user_id) !== userId) {
-                return prevUser; // Если selectedUser изменился, не обновляем
+                return prevUser; // If selectedUser has changed, do not update
               }
               
               return {
@@ -441,13 +549,13 @@ export default function MapScreen() {
       }
     } catch (error) {
       console.error('Error fetching fresh user data:', error);
-      // Игнорируем ошибку, используем данные которые уже есть
+      // Ignore the error, use the data we already have
     }
   };
 
-  // Функция для рендеринга кластера
+  // Renders a cluster
   const renderCluster = (cluster: any) => {
-    const { id, geometry, properties } = cluster;
+    const { geometry, properties } = cluster;
     const { cluster_id, point_count } = properties;
     
     return (
@@ -457,123 +565,9 @@ export default function MapScreen() {
           latitude: geometry.coordinates[1],
           longitude: geometry.coordinates[0],
         }}
-        onPress={async () => {
-          // Приближаем камеру к точке кластера
-          const clusterLat = geometry.coordinates[1];
-          const clusterLng = geometry.coordinates[0];
-          
-          try {
-            if (mapViewRef.current?.getCamera) {
-              const camera = await mapViewRef.current.getCamera();
-              const currentZoom = camera?.zoom || 10;
-              
-              // Увеличиваем zoom на несколько уровней для раскрытия кластера
-              const newZoom = Math.min(currentZoom + 5, 22);
-              
-              // Вычисляем новый delta на основе zoom
-              const baseDelta = 0.01;
-              const zoomFactor = Math.pow(2, currentZoom - newZoom);
-              const newDelta = baseDelta * zoomFactor;
-              
-              // Устанавливаем флаг, что происходит раскрытие кластера
-              isClusterExpandingRef.current = true;
-              
-              if (mapViewRef.current?.animateToCamera) {
-                mapViewRef.current.animateToCamera({
-                  center: {
-                    latitude: clusterLat,
-                    longitude: clusterLng,
-                  },
-                  zoom: newZoom,
-                }, 500);
-                
-                // Сохраняем zoom и фиксируем позицию после анимации
-                setTimeout(() => {
-                  isClusterExpandingRef.current = false;
-                  setFixedRegion({
-                    latitude: clusterLat,
-                    longitude: clusterLng,
-                    latitudeDelta: newDelta,
-                    longitudeDelta: newDelta,
-                  });
-                }, 550);
-              } else {
-                // Fallback: используем очень маленький delta с координатами кластера
-                const delta = point_count <= 3 ? 0.000003 : 0.000005;
-                mapViewRef.current?.animateToRegion(
-                    {
-                      latitude: clusterLat,
-                      longitude: clusterLng,
-                      latitudeDelta: delta,
-                      longitudeDelta: delta,
-                    },
-                    500
-                );
-                
-                // Сохраняем zoom и фиксируем позицию после анимации
-                setTimeout(() => {
-                  isClusterExpandingRef.current = false;
-                  setFixedRegion({
-                    latitude: clusterLat,
-                    longitude: clusterLng,
-                    latitudeDelta: delta,
-                    longitudeDelta: delta,
-                  });
-                }, 550);
-              }
-            } else {
-              // Если getCamera не доступен, используем очень маленький delta
-              const delta = point_count <= 3 ? 0.000003 : 0.000005;
-              
-              isClusterExpandingRef.current = true;
-              mapViewRef.current?.animateToRegion(
-                  {
-                    latitude: clusterLat,
-                    longitude: clusterLng,
-                    latitudeDelta: delta,
-                    longitudeDelta: delta,
-                  },
-                  500
-              );
-              
-              // Сохраняем zoom и фиксируем позицию после анимации
-              setTimeout(() => {
-                isClusterExpandingRef.current = false;
-                setFixedRegion({
-                  latitude: clusterLat,
-                  longitude: clusterLng,
-                  latitudeDelta: delta,
-                  longitudeDelta: delta,
-                });
-              }, 550);
-            }
-          } catch (error) {
-            // Если произошла ошибка, используем очень маленький delta
-            const delta = point_count <= 3 ? 0.000003 : 0.000005;
-            
-            isClusterExpandingRef.current = true;
-            mapViewRef.current?.animateToRegion(
-                {
-                  latitude: clusterLat,
-                  longitude: clusterLng,
-                  latitudeDelta: delta,
-                  longitudeDelta: delta,
-                },
-                500
-            );
-            
-            // Сохраняем zoom и фиксируем позицию после анимации
-            setTimeout(() => {
-              isClusterExpandingRef.current = false;
-              setFixedRegion({
-                latitude: clusterLat,
-                longitude: clusterLng,
-                latitudeDelta: delta,
-                longitudeDelta: delta,
-              });
-            }, 550);
-          }
-        }}
+        // The library zooms to fit all the cluster's markers (fitToCoordinates):
+        // works on Apple Maps too, unlike animateToCamera({ zoom }), which is Google Maps only
+        onPress={cluster.onPress}
       >
         <View style={mapStyles.clusterContainer}>
           <View style={mapStyles.clusterMarker}>
@@ -588,29 +582,29 @@ export default function MapScreen() {
     setSelectedUser(null);
   };
 
-  // Обновляем selectedUser актуальными данными из onlineUsers и messagesUsers при их изменении
+  // Update selectedUser with up-to-date data from onlineUsers and messagesUsers when they change
   useEffect(() => {
     if (selectedUser) {
       const userId = selectedUser.id || selectedUser.user_id;
       if (userId) {
-        // Ищем пользователя в onlineUsers (они содержат самые актуальные данные, обновляются каждые 3 секунды)
+        // Look up the user in onlineUsers (they hold the most up-to-date data, refreshed every 3 seconds)
         const onlineUser = onlineUsers.find((u: any) => {
           const uId = u.id || u.user_id;
           return uId === userId || String(uId) === String(userId);
         });
         
-        // Если пользователь найден в onlineUsers, всегда обновляем данными оттуда (они самые актуальные)
+        // If the user is found in onlineUsers, always update from there (that data is the most current)
         if (onlineUser) {
-          // Создаем объект с актуальными данными
+          // Build an object with up-to-date data
           const updatedUser = {
             ...selectedUser,
-            ...onlineUser, // Актуальные данные из onlineUsers имеют приоритет
-            id: userId, // Сохраняем id
-            lat: onlineUser.lat || selectedUser.lat, // Сохраняем координаты
+            ...onlineUser, // Up-to-date data from onlineUsers takes priority
+            id: userId, // Keep the id
+            lat: onlineUser.lat || selectedUser.lat, // Keep coordinates
             lng: onlineUser.lng || selectedUser.lng,
           };
           
-          // Проверяем, действительно ли данные изменились
+          // Check whether the data actually changed
           const fieldsToCheck = ['image', 'name', 'age', 'sex', 'description', 'thoughts', 'is_online'];
           const hasChanges = fieldsToCheck.some(field => {
             const oldValue = selectedUser[field];
@@ -618,12 +612,12 @@ export default function MapScreen() {
             return oldValue !== newValue;
           });
           
-          // Обновляем только если данные действительно изменились
+          // Update only if the data actually changed
           if (hasChanges) {
             setSelectedUser(updatedUser);
           }
         } else {
-          // Если пользователя нет в onlineUsers, проверяем messagesUsers
+          // If the user is not in onlineUsers, check messagesUsers
           const userIdKey = Object.keys(messagesUsers).find(id => {
             const msgUser = messagesUsers[id];
             return msgUser && (msgUser.id === userId || String(msgUser.id) === String(userId) || id === String(userId));
@@ -639,10 +633,10 @@ export default function MapScreen() {
             if (hasChanges) {
               const updatedUser = {
                 ...selectedUser,
-                ...msgUser, // Дополняем данными из messagesUsers
-                lat: selectedUser.lat, // Сохраняем координаты
+                ...msgUser, // Fill in with data from messagesUsers
+                lat: selectedUser.lat, // Keep coordinates
                 lng: selectedUser.lng,
-                id: userId, // Сохраняем id
+                id: userId, // Keep the id
               };
               setSelectedUser(updatedUser);
             }
@@ -656,7 +650,7 @@ export default function MapScreen() {
   const handleWrite = () => {
     if (!selectedUser?.id) return;
     
-    // Ищем пользователя в messagesUsers по id (может быть разный формат ключа)
+    // Look up the user in messagesUsers by id (key format may differ)
     const userId = Object.keys(messagesUsers).find(id => {
       const user = messagesUsers[id];
       return user && (user.id === selectedUser.id || 
@@ -667,41 +661,52 @@ export default function MapScreen() {
     let chatUser;
     
     if (userId && messagesUsers[userId]) {
-      // Если пользователь найден в messagesUsers, используем его данные (актуальные из get_messages)
-      // Но дополняем координатами из selectedUser если они есть
+      // If the user is found in messagesUsers, use that data (up to date from get_messages)
+      // But fill in coordinates from selectedUser if available
       chatUser = {
         ...messagesUsers[userId],
         lat: selectedUser.lat,
         lng: selectedUser.lng,
       };
     } else {
-      // Если пользователя нет в messagesUsers, используем все данные из selectedUser
-      // selectedUser содержит актуальные данные из onlineUsers (age, description, name, sex, thoughts и т.д.)
+      // If the user is not in messagesUsers, use all data from selectedUser
+      // selectedUser holds up-to-date data from onlineUsers (age, description, name, sex, thoughts, etc.)
       chatUser = { ...selectedUser };
     }
     
-    // Устанавливаем пользователя для диалога
+    // Set the user for the chat
     setSelectedChatUser(chatUser);
-    setShowUserInfo(false); // Сбрасываем показ информации при открытии нового чата
+    setShowUserInfo(false); // Reset the user info view when opening a new chat
     
-    // Сбрасываем счетчик сообщений при открытии нового чата
+    // Reset the message counter when opening a new chat
     lastMessageCountRef.current = 0;
     
-    // Закрываем карточку пользователя
+    // Close the user card
     handleCloseUserCard();
     
-    // Открываем модальное окно сообщений
+    // On iOS a Modal cannot be presented while another one is being dismissed,
+    // so the messages panel is opened from the card's onDismiss
+    if (Platform.OS === 'ios') {
+      openChatAfterCardCloseRef.current = true;
+    } else {
+      openMessagesPanel();
+    }
+  };
+
+  // Open the messages modal
+  const openMessagesPanel = () => {
     setMessagesVisible(true);
+    // Set the value to 0 so the panel appears (translateY = 0)
     slideAnim.value = withSpring(0);
   };
 
-  // Функция для подсчета непрочитанных сообщений от конкретного пользователя
+  // Counts unread messages from a specific user
   const getUnreadCountForUser = (userId: string | number): number => {
     const messages = messagesData.messages || {};
     const userMessages = messages[userId] || [];
     const userIdNum = typeof userId === 'string' ? parseInt(userId, 10) : userId;
     
-    // Подсчитываем только входящие непрочитанные сообщения (sender_id === userId и is_read === 0)
+    // Count only incoming unread messages (sender_id === userId and is_read === 0)
     if (!Array.isArray(userMessages)) {
       return 0;
     }
@@ -713,12 +718,12 @@ export default function MapScreen() {
     }).length;
   };
 
-  // Функция для получения сообщений от конкретного пользователя
+  // Returns messages with a specific user
   const getMessagesForUser = (userId: string | number): any[] => {
     const messages = messagesData.messages || {};
     const userMessages = messages[userId] || [];
     
-    // Если это массив, сортируем по created_at
+    // If it is an array, sort by created_at
     if (!Array.isArray(userMessages)) {
       return [];
     }
@@ -730,7 +735,7 @@ export default function MapScreen() {
     });
   };
 
-  // Функция для отправки сообщения
+  // Sends a message
   const handleSendMessage = async () => {
     if (!messageText.trim() || !selectedChatUser || sendingMessage) {
       return;
@@ -746,7 +751,7 @@ export default function MapScreen() {
       const result = await sendMessage(token, selectedChatUser.id, messageText.trim());
       if (result.status === 'success') {
         setMessageText('');
-        // Прокручиваем вниз после отправки
+        // Scroll down after sending
         setTimeout(() => {
           scrollViewRef.current?.scrollToEnd({ animated: true });
         }, 100);
@@ -758,16 +763,16 @@ export default function MapScreen() {
     }
   };
 
-  // Функция для открытия чата с пользователем
+  // Opens a chat with a user
 
-  // Функция для возврата к списку пользователей
+  // Returns to the users list
   const handleBackToUsers = () => {
     setSelectedChatUser(null);
-    // Сбрасываем счетчик сообщений при возврате к списку
+    // Reset the message counter when returning to the list
     lastMessageCountRef.current = 0;
   };
 
-  // Функция для показа пользователя на карте
+  // Shows a user on the map
   const handleShowOnMap = (userId: number) => {
     const user = onlineUsers.find((u: any) => (u.id || u.user_id) === userId);
     
@@ -796,8 +801,8 @@ export default function MapScreen() {
 
   return (
       <View style={mapStyles.container}>
-        {/* Header с иконками профиля, заголовка и сообщений */}
-        <View style={mapStyles.header}>
+        {/* Header with profile icon, title and messages icon */}
+        <View style={[mapStyles.header, { paddingTop: insets.top + 6 }]}>
           <Pressable
               style={mapStyles.profileButton}
               onPress={() => router.replace('/profile')}
@@ -819,11 +824,7 @@ export default function MapScreen() {
 
           <Pressable
               style={mapStyles.messageButton}
-              onPress={() => {
-                setMessagesVisible(true);
-                // Устанавливаем значение в 0, чтобы плашка появилась (translateY = 0)
-                slideAnim.value = withSpring(0);
-              }}
+              onPress={openMessagesPanel}
           >
             <View style={[mapStyles.messageIcon, mapStyles.messageIconPlaceholder]}>
               <Text style={mapStyles.messageIconText}>✉️</Text>
@@ -838,11 +839,11 @@ export default function MapScreen() {
           </Pressable>
         </View>
 
-        {/* Контент страницы - карта */}
+        {/* Screen content - the map */}
         <View style={mapStyles.content}>
           {userLat !== null && userLng !== null ? (
               <MapView
-                  key="main-map" // Стабильный key предотвращает полный перерендер при обновлении данных
+                  key="main-map" // A stable key prevents a full re-render on data updates
                   ref={mapViewRef}
                   provider={PROVIDER_DEFAULT}
                   style={mapStyles.map}
@@ -851,28 +852,6 @@ export default function MapScreen() {
                     longitude: userLng || 0,
                     latitudeDelta: 0.01,
                     longitudeDelta: 0.01,
-                  }}
-                  // region={fixedRegion || undefined}
-                  onRegionChangeComplete={(region) => {
-                    // Сохраняем позицию камеры только если это не автоматическое изменение при обновлении данных
-                    if (!isUpdatingDataRef.current && !isClusterExpandingRef.current) {
-                      currentRegionRef.current = region;
-                      isUserInteractingRef.current = true;
-                    }
-                  }}
-                  onPanDrag={() => {
-                    // Пользователь перетаскивает карту - снимаем фиксацию позиции
-                    setFixedRegion(null);
-
-                  }}
-                  onPress={() => {
-                    // Пользователь нажал на карту - снимаем фиксацию позиции
-                    setFixedRegion(null);
-
-                  }}
-                  onMarkerPress={() => {
-                    // Пользователь нажал на маркер - снимаем фиксацию позиции
-                    setFixedRegion(null);
                   }}
                   showsUserLocation={false}
                   showsMyLocationButton={false}
@@ -883,62 +862,29 @@ export default function MapScreen() {
                   minPoints={3}
                   edgePadding={{ top: 50, left: 50, bottom: 50, right: 50 }}
                   renderCluster={renderCluster}
-                  preserveClusterPressBehavior={true}
                   clusterColor="#4ECDC4"
                   clusterTextColor="#fff"
                   clusterFontFamily="System"
-                  onMapReady={() => {
-                    // При готовности карты сохраняем начальную позицию
-                    if (mapViewRef.current?.getCamera) {
-                      mapViewRef.current.getCamera().then((camera: any) => {
-                        if (camera?.center) {
-                          currentRegionRef.current = {
-                            latitude: camera.center.latitude,
-                            longitude: camera.center.longitude,
-                            latitudeDelta: 0.01,
-                            longitudeDelta: 0.01,
-                          };
-                        }
-                      }).catch(() => {});
-                    }
-                  }}
               >
-                {/* Маркер текущего пользователя - используем актуальные данные из online_users */}
+                {/* Current user's marker - uses up-to-date data from online_users */}
                 {currentUserData && userLat !== null && userLng !== null && (
-                  <Marker
+                  <AvatarMarker
                       key={`self-${currentUserData?.thoughts || ''}-${currentUserData?.image || ''}-${currentUserData?.id || ''}`}
                       coordinate={{
                         latitude: userLat,
                         longitude: userLng,
                       }}
                       onPress={() => handleMarkerPress(currentUserData)}
-                      tracksViewChanges={true} // TODO 1
-                  >
-                    <View style={mapStyles.markerContainer}>
-                      {currentUserData?.image ? (
-                          <Image
-                              source={{ uri: getImageUrl(currentUserData.image) || '' }}
-                              style={mapStyles.markerAvatar}
-                              contentFit="cover"
-                          />
-                      ) : (
-                          <View style={[mapStyles.markerAvatar, mapStyles.markerAvatarPlaceholder]}>
-                            <View style={mapStyles.markerAvatarInner} />
-                          </View>
-                      )}
-                      {currentUserData?.thoughts && (
-                        <Text style={mapStyles.markerThoughts} numberOfLines={2}>
-                          {currentUserData.thoughts}
-                        </Text>
-                      )}
-                    </View>
-                  </Marker>
+                      imageUri={getImageUrl(currentUserData?.image)}
+                      avatarStyle={mapStyles.markerAvatar}
+                      thoughts={currentUserData?.thoughts}
+                  />
                 )}
 
-                {/* Маркеры других онлайн пользователей */}
+                {/* Markers of other online users */}
                 {onlineUsers
                   .filter((user: any) => {
-                    // Фильтруем только пользователей с валидными координатами
+                    // Keep only users with valid coordinates
                     const lat = parseCoordinate(user.lat);
                     const lng = parseCoordinate(user.lng);
                     return lat !== null && lng !== null && user.id !== undefined;
@@ -948,23 +894,23 @@ export default function MapScreen() {
                   const userLng = parseCoordinate(user.lng);
                   const userId = String(user.id || user.user_id || `user-${user.lat}-${user.lng}`);
                   
-                  // Дополнительная проверка на валидность координат
+                  // Extra coordinate validity check
                   if (userLat === null || userLng === null || !userId) {
                     return null;
                   }
                   
-                  // Используем актуальные данные из onlineUsers (они обновляются каждые 3 секунды)
-                  // onlineUsers содержит самые свежие данные (thoughts, image, name, age и т.д.)
-                  const actualUser = user; // onlineUsers уже содержит актуальные данные
+                  // Use up-to-date data from onlineUsers (refreshed every 3 seconds)
+                  // onlineUsers holds the freshest data (thoughts, image, name, age, etc.)
+                  const actualUser = user; // onlineUsers already holds up-to-date data
                   
-                  // Генерируем уникальный цвет для маркера на основе данных пользователя
+                  // Generate a unique marker color based on user data
                   const markerColor = getUserMarkerColor(actualUser);
                   
-                  // Создаем ключ, который включает изменяемые поля для перерисовки маркера при изменении
+                  // Build a key that includes mutable fields so the marker re-renders when they change
                   const markerKey = `${userId}-${actualUser.thoughts || ''}-${actualUser.image || ''}-${actualUser.name || ''}`;
                   
                   return (
-                      <Marker
+                      <AvatarMarker
                           key={markerKey}
                           identifier={String(userId)}
                           coordinate={{
@@ -972,49 +918,38 @@ export default function MapScreen() {
                             longitude: userLng,
                           }}
                           onPress={() => handleMarkerPress(actualUser)}
-                          tracksViewChanges={true}
-                      >
-                          <View style={mapStyles.markerContainer}>
-                              {actualUser.image ? (
-                                  <Image
-                                      source={{ uri: getImageUrl(actualUser.image) || '' }}
-                                      style={[mapStyles.otherUserMarkerAvatar, { borderColor: markerColor }]}
-                                      contentFit="cover"
-                                  />
-                              ) : (
-                                  <View style={[mapStyles.otherUserMarkerAvatar, mapStyles.markerAvatarPlaceholder, { borderColor: markerColor }]}>
-                                      <View style={mapStyles.markerAvatarInner} />
-                                  </View>
-                              )}
-                              {actualUser?.thoughts && (
-                                <Text style={mapStyles.markerThoughts} numberOfLines={2}>
-                                  {actualUser.thoughts}
-                                </Text>
-                              )}
-                          </View>
-                      </Marker>
+                          imageUri={getImageUrl(actualUser.image)}
+                          avatarStyle={[mapStyles.otherUserMarkerAvatar, { borderColor: markerColor }]}
+                          thoughts={actualUser.thoughts}
+                      />
                   );
                 })}
               </MapView>
           ) : (
               <View style={mapStyles.emptyContent}>
-                <Text style={mapStyles.emptyText}>Координаты не доступны</Text>
+                <Text style={mapStyles.emptyText}>Location unavailable</Text>
               </View>
           )}
         </View>
 
-        {/* Карточка пользователя при нажатии на маркер */}
+        {/* User card shown when a marker is tapped */}
         <Modal
           visible={selectedUser !== null}
           transparent={true}
           animationType="fade"
           onRequestClose={handleCloseUserCard}
+          onDismiss={() => {
+            if (openChatAfterCardCloseRef.current) {
+              openChatAfterCardCloseRef.current = false;
+              openMessagesPanel();
+            }
+          }}
         >
           <TouchableWithoutFeedback onPress={handleCloseUserCard}>
             <View style={mapStyles.userCardBackdrop}>
               <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
                 <View style={mapStyles.userCard}>
-                  {/* Кнопка закрытия */}
+                  {/* Close button */}
                   <Pressable
                     style={mapStyles.userCardCloseButton}
                     onPress={handleCloseUserCard}
@@ -1022,7 +957,7 @@ export default function MapScreen() {
                     <Text style={mapStyles.userCardCloseText}>✕</Text>
                   </Pressable>
 
-                  {/* Фото пользователя */}
+                  {/* User photo */}
                   <View style={mapStyles.userCardImageContainer}>
                     {selectedUser?.image ? (
                       <Image
@@ -1037,18 +972,18 @@ export default function MapScreen() {
                     )}
                   </View>
 
-                  {/* Информация о пользователе */}
+                  {/* User info */}
                   <ScrollView style={mapStyles.userCardContent} showsVerticalScrollIndicator={false}>
                     <Text style={mapStyles.userCardName}>
-                      {selectedUser?.name || 'Имя не указано'}
+                      {selectedUser?.name || 'No name'}
                     </Text>
                     
                     <Text style={mapStyles.userCardInfo}>
-                      Age - {selectedUser?.age || 'не указан'}
+                      Age - {selectedUser?.age || 'not specified'}
                     </Text>
                     
                     <Text style={mapStyles.userCardInfo}>
-                      Sex - {selectedUser?.sex || 'не указан'}
+                      Gender - {selectedUser?.sex === 'male' ? 'Male' : selectedUser?.sex === 'female' ? 'Female' : selectedUser?.sex || 'not specified'}
                     </Text>
                     
                     {userLat !== null && userLng !== null && selectedUser?.lat && selectedUser?.lng && 
@@ -1073,7 +1008,7 @@ export default function MapScreen() {
                     )}
                   </ScrollView>
 
-                  {/* Кнопка Write или текст "It's you" */}
+                  {/* Write button or "It's you" text */}
                   {selectedUser?.id === userData?.id ? (
                     <View style={mapStyles.userCardItsYouContainer}>
                       <Text style={mapStyles.userCardItsYouText}>It&apos;s you</Text>
@@ -1092,7 +1027,7 @@ export default function MapScreen() {
           </TouchableWithoutFeedback>
         </Modal>
 
-        {/* Плашка сообщений снизу */}
+        {/* Messages panel at the bottom */}
         <MessagesModal
           visible={messagesVisible}
           slideAnim={slideAnim}
@@ -1119,7 +1054,7 @@ export default function MapScreen() {
           getUnreadCountForUser={getUnreadCountForUser}
           getMessagesForUser={getMessagesForUser}
           formatMessageTime={formatMessageTime}
-          title="Сообщения"
+          title="Messages"
           getToken={getToken}
           readMessages={readMessages}
           setMessagesData={setMessagesData}
