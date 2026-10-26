@@ -1,12 +1,24 @@
-import { getSelf, signUpUser } from '@/services/api';
-import { saveToken, saveUserData } from '@/services/auth';
+import { signUpUser } from '@/services/api';
+import { saveToken } from '@/services/auth';
 import { startMessagesInterval } from '@/services/messagesInterval';
+import { useTheme } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import Toast from 'react-native-toast-message';
 
 export default function SignUpScreen() {
+  const { colors } = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
@@ -25,7 +37,7 @@ export default function SignUpScreen() {
   };
 
   const handleSignUp = async () => {
-    // Валидация полей
+    // Field validation
     if (!email || !password || !passwordConfirmation) {
       Toast.show({
         type: 'error',
@@ -35,7 +47,7 @@ export default function SignUpScreen() {
       return;
     }
 
-    // Проверка совпадения паролей
+    // Check that passwords match
     if (password !== passwordConfirmation) {
       Toast.show({
         type: 'error',
@@ -48,91 +60,96 @@ export default function SignUpScreen() {
     setLoading(true);
     const response = await signUpUser({ email, password });
 
-    if (response.status === 'success') {
-      // Сохраняем токен
-      const token = response.data.token;
-      if (token) {
-        await saveToken(token);
-      }
+    // Without a token the profile will not open anyway, so this is a registration error too
+    const token = response.status === 'success' ? response.data?.token : null;
 
-      // Показываем сообщение об успехе
-      Toast.show({
-        type: 'success',
-        text1: 'Success',
-        text2: response.data?.message || 'Registration successful',
-      });
-
-      // Запрашиваем данные пользователя через /self
-      if (token) {
-        const selfResult = await getSelf(token);
-        if (selfResult.status === 'success') {
-          await saveUserData(selfResult.data);
-        }
-      }
-
-      // Запускаем интервал получения сообщений
-      startMessagesInterval();
-
-      // Переход на страницу профиля
-      router.replace('/profile');
-    } else {
+    if (!token) {
       Toast.show({
         type: 'error',
         text1: 'Registration failed',
-        text2: response.data?.message || 'Could not register',
+        // On a successful response without a token the server message may sound like success - do not show it
+        text2:
+          response.status === 'success'
+            ? 'No session token received'
+            : response.data?.message || 'Could not register',
       });
+      setLoading(false);
+      return;
     }
 
-    setLoading(false);
+    await saveToken(token);
+
+    Toast.show({
+      type: 'success',
+      text1: 'Success',
+      text2: response.data?.message || 'Registration successful',
+    });
+
+    // Start the messages polling interval
+    startMessagesInterval();
+
+    // Go to the profile screen (the profile loads user data itself via /self)
+    router.replace('/profile');
   };
 
   const handleSignIn = () => {
-    router.push('/');
+    // replace, not push: otherwise switching login <-> signup grows the stack endlessly
+    router.replace('/');
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.content}>
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {/* Title placeholder */}
-        <Text style={styles.title}>People Meet</Text>
+        <Text style={[styles.title, { color: colors.text }]}>People Meet</Text>
 
-        <View style={styles.card}>
-          <Text style={styles.header}>Signup</Text>
+        <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.card }]}>
+          <Text style={[styles.header, { color: colors.text }]}>Signup</Text>
 
           {/* Email field */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Email</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
               value={email}
               onChangeText={handleEmailChange}
               placeholder=""
               autoCapitalize="none"
+              autoCorrect={false}
               keyboardType="email-address"
+              textContentType="emailAddress"
+              autoComplete="email"
             />
           </View>
 
           {/* Password field */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Password</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
               value={password}
               onChangeText={handlePasswordChange}
               placeholder=""
               secureTextEntry
+              textContentType="newPassword"
+              autoComplete="new-password"
             />
           </View>
 
           {/* Password Confirmation field */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password Confirmation</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Password Confirmation</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
               value={passwordConfirmation}
               onChangeText={handlePasswordConfirmationChange}
               placeholder=""
               secureTextEntry
+              textContentType="newPassword"
+              autoComplete="new-password"
             />
           </View>
 
@@ -153,13 +170,13 @@ export default function SignUpScreen() {
         </View>
         {/* Sign in option */}
         <View style={styles.signInContainer}>
-          <Text style={styles.signInText}>Or </Text>
+          <Text style={[styles.signInText, { color: colors.text }]}>Or </Text>
           <Pressable onPress={handleSignIn}>
-            <Text style={styles.signInLink}>Sign In</Text>
+            <Text style={[styles.signInLink, { color: colors.primary }]}>Sign In</Text>
           </Pressable>
         </View>
-      </View>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -169,7 +186,7 @@ const styles = StyleSheet.create({
     // TODO: Add background styling
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
 
@@ -186,7 +203,6 @@ const styles = StyleSheet.create({
     width: '90%',
     padding: 16,
     borderWidth: 1,
-    borderColor: '#0000002d',
     boxShadow: 'rgba(17, 12, 46, 0.15) 0px 48px 100px 0px',
     borderRadius: 8,
   },
