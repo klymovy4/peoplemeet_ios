@@ -1,15 +1,16 @@
 {
   "expo": {
-    "name": "MyFirstApp",
-    "slug": "MyFirstApp",
+    "name": "PeopleMeet",
+    "slug": "peoplemeet",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myfirstapp",
+    "scheme": "peoplemeet",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "ua.com.peoplemeet",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to upload profile pictures.",
         "NSPhotoLibraryAddUsageDescription": "This app needs access to save photos to your photo library.",
@@ -18,6 +19,7 @@
       }
     },
     "android": {
+      "package": "ua.com.peoplemeet",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

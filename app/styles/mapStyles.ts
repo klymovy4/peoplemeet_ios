@@ -100,10 +100,10 @@ export const mapStyles = StyleSheet.create({
   },
   // Transparent area that limits the bubble's max width. Without it the absolutely
   // positioned bubble would be squeezed to the avatar's width and wrap word by word
+  // Horizontal position (left) is set in AvatarMarker relative to the avatar size
   markerThoughtsContainer: {
     position: 'absolute',
-    top: -40,
-    right: -135,
+    top: 0,
     width: 150,
     alignItems: 'flex-start',
     zIndex: 10,

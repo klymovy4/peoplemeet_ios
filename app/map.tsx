@@ -23,12 +23,39 @@ type AvatarMarkerProps = {
   onPress: () => void;
   imageUri: string | null;
   avatarStyle: StyleProp<ImageStyle>;
+  avatarSize: number;
   thoughts?: string;
+};
+
+// Avatar sizes - must match mapStyles.markerAvatar / otherUserMarkerAvatar
+const SELF_AVATAR_SIZE = 50;
+const OTHER_AVATAR_SIZE = 45;
+
+// Thoughts bubble geometry relative to the avatar: the bubble starts THOUGHTS_TOP above
+// the avatar and THOUGHTS_OVERLAP to the left of its right edge
+const THOUGHTS_TOP = 40;
+const THOUGHTS_WIDTH = 150;
+const THOUGHTS_OVERLAP = 15;
+
+// On Android a custom marker is rendered into a bitmap the size of its root View, so the
+// bubble would be clipped if it overflowed. With thoughts the root View is expanded to fit
+// the bubble, and the marker is re-anchored so the coordinate stays on the avatar center
+const getThoughtsLayout = (avatarSize: number) => {
+  const width = avatarSize - THOUGHTS_OVERLAP + THOUGHTS_WIDTH;
+  const height = THOUGHTS_TOP + avatarSize;
+  const avatarCenterX = avatarSize / 2;
+  const avatarCenterY = THOUGHTS_TOP + avatarSize / 2;
+  const anchorProps = Platform.OS === 'ios'
+    // Apple Maps: offset of the View center from the coordinate, in points
+    ? { centerOffset: { x: width / 2 - avatarCenterX, y: height / 2 - avatarCenterY } }
+    // Google Maps: anchor point as a fraction of the View size
+    : { anchor: { x: avatarCenterX / width, y: avatarCenterY / height } };
+  return { width, height, anchorProps };
 };
 
 // Marker with a custom avatar view. tracksViewChanges stays on only until the avatar
 // is displayed: when it is always on, iOS keeps redrawing every marker and the map lags
-function AvatarMarker({ coordinate, identifier, onPress, imageUri, avatarStyle, thoughts }: AvatarMarkerProps) {
+function AvatarMarker({ coordinate, identifier, onPress, imageUri, avatarStyle, avatarSize, thoughts }: AvatarMarkerProps) {
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
 
   // Without a photo there is nothing to wait for: stop tracking after the first render
@@ -38,35 +65,42 @@ function AvatarMarker({ coordinate, identifier, onPress, imageUri, avatarStyle, 
     return () => clearTimeout(timer);
   }, [imageUri]);
 
+  const avatar = imageUri ? (
+    <Image
+      source={{ uri: imageUri }}
+      style={avatarStyle}
+      contentFit="cover"
+      onDisplay={() => setTracksViewChanges(false)}
+      onError={() => setTracksViewChanges(false)}
+    />
+  ) : (
+    <View style={[avatarStyle, mapStyles.markerAvatarPlaceholder]}>
+      <View style={mapStyles.markerAvatarInner} />
+    </View>
+  );
+
+  const thoughtsLayout = thoughts ? getThoughtsLayout(avatarSize) : null;
+
   return (
     <Marker
       identifier={identifier}
       coordinate={coordinate}
       onPress={onPress}
       tracksViewChanges={tracksViewChanges}
+      {...thoughtsLayout?.anchorProps}
     >
-      <View style={mapStyles.markerContainer}>
-        {imageUri ? (
-          <Image
-            source={{ uri: imageUri }}
-            style={avatarStyle}
-            contentFit="cover"
-            onDisplay={() => setTracksViewChanges(false)}
-            onError={() => setTracksViewChanges(false)}
-          />
-        ) : (
-          <View style={[avatarStyle, mapStyles.markerAvatarPlaceholder]}>
-            <View style={mapStyles.markerAvatarInner} />
-          </View>
-        )}
-        {thoughts ? (
-          <View style={mapStyles.markerThoughtsContainer}>
+      {thoughtsLayout ? (
+        <View style={{ width: thoughtsLayout.width, height: thoughtsLayout.height }}>
+          <View style={{ position: 'absolute', left: 0, top: THOUGHTS_TOP }}>{avatar}</View>
+          <View style={[mapStyles.markerThoughtsContainer, { left: avatarSize - THOUGHTS_OVERLAP }]}>
             <Text style={mapStyles.markerThoughts} numberOfLines={2}>
               {thoughts}
             </Text>
           </View>
-        ) : null}
-      </View>
+        </View>
+      ) : (
+        <View style={mapStyles.markerContainer}>{avatar}</View>
+      )}
     </Marker>
   );
 }
@@ -877,6 +911,7 @@ export default function MapScreen() {
                       onPress={() => handleMarkerPress(currentUserData)}
                       imageUri={getImageUrl(currentUserData?.image)}
                       avatarStyle={mapStyles.markerAvatar}
+                      avatarSize={SELF_AVATAR_SIZE}
                       thoughts={currentUserData?.thoughts}
                   />
                 )}
@@ -920,6 +955,7 @@ export default function MapScreen() {
                           onPress={() => handleMarkerPress(actualUser)}
                           imageUri={getImageUrl(actualUser.image)}
                           avatarStyle={[mapStyles.otherUserMarkerAvatar, { borderColor: markerColor }]}
+                          avatarSize={OTHER_AVATAR_SIZE}
                           thoughts={actualUser.thoughts}
                       />
                   );
