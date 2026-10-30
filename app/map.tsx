@@ -152,7 +152,10 @@ export default function MapScreen() {
       if (state === 'active') {
         refreshOnlineStatus();
       } else if (state === 'background') {
+        // Stop telling the server "I'm here": after 3 minutes in the background the server sets
+        // the user offline (iOS freezes the app anyway, Android can keep it running)
         stopLocationTracking();
+        disableUsersOnlinePolling();
       }
     });
 
