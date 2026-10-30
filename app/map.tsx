@@ -7,14 +7,14 @@ import { playMessageSound } from '@/services/soundService';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { ActivityIndicator, AppState, Pressable, View, Text, Modal, TouchableWithoutFeedback, ScrollView, Platform, StyleProp, ImageStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSharedValue, withSpring } from 'react-native-reanimated';
-import { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
-import MapView from 'react-native-map-clustering';
+import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import MessagesModal from '@/components/MessagesModal';
 import { useUserModeration } from '@/hooks/use-user-moderation';
+import { useMapClusters, MapPoint } from '@/hooks/use-map-clusters';
 import Toast from 'react-native-toast-message';
 import { getImageUrl, parseCoordinate, getUserMarkerColor, calculateDistance, formatMessageTime, replaceEmoticons } from '@/utils/utils';
 import { mapStyles } from '@/styles/mapStyles';
@@ -237,10 +237,7 @@ export default function MapScreen() {
 
       // Always update state with fresh data from online_users
       // This ensures markers use up-to-date data (thoughts, image, etc.)
-      // Use a small delay to prevent crashes on rapid updates
-      setTimeout(() => {
-        setOnlineUsers(filteredUsers);
-      }, 50);
+      setOnlineUsers(filteredUsers);
     });
 
     // Clear the callback on unmount (a duplicate cleanup already exists in the first useEffect)
@@ -593,24 +590,45 @@ export default function MapScreen() {
   };
 
   // Renders a cluster
-  const renderCluster = (cluster: any) => {
-    const { geometry, properties } = cluster;
-    const { cluster_id, point_count } = properties;
-    
+  // Other online users as map points (your own marker is never clustered)
+  const otherUserPoints: MapPoint<any>[] = useMemo(
+    () =>
+      onlineUsers
+        .map((user: any) => ({
+          user,
+          userId: user.id ?? user.user_id,
+          latitude: parseCoordinate(user.lat),
+          longitude: parseCoordinate(user.lng),
+        }))
+        .filter(({ userId, latitude, longitude }) => userId !== undefined && latitude !== null && longitude !== null)
+        .map(({ user, userId, latitude, longitude }) => ({
+          key: `user-${userId}`,
+          latitude: latitude as number,
+          longitude: longitude as number,
+          data: user,
+        })),
+    [onlineUsers],
+  );
+
+  const { items: mapItems, onRegionChangeComplete, getClusterCoordinates } = useMapClusters(otherUserPoints);
+
+  const renderCluster = (clusterId: number, pointCount: number, latitude: number, longitude: number) => {
     return (
       <Marker
-        key={`cluster-${cluster_id}`}
-        coordinate={{
-          latitude: geometry.coordinates[1],
-          longitude: geometry.coordinates[0],
-        }}
-        // The library zooms to fit all the cluster's markers (fitToCoordinates):
-        // works on Apple Maps too, unlike animateToCamera({ zoom }), which is Google Maps only
-        onPress={cluster.onPress}
+        key={`cluster-${clusterId}`}
+        coordinate={{ latitude, longitude }}
+        // Zoom to fit all the cluster's markers: fitToCoordinates works on Apple Maps too,
+        // unlike animateToCamera({ zoom }), which is Google Maps only
+        onPress={() =>
+          mapViewRef.current?.fitToCoordinates(getClusterCoordinates(clusterId), {
+            edgePadding: { top: 50, left: 50, bottom: 50, right: 50 },
+            animated: true,
+          })
+        }
       >
         <View style={mapStyles.clusterContainer}>
           <View style={mapStyles.clusterMarker}>
-            <Text style={mapStyles.clusterText}>{point_count}</Text>
+            <Text style={mapStyles.clusterText}>{pointCount}</Text>
           </View>
         </View>
       </Marker>
@@ -928,16 +946,8 @@ export default function MapScreen() {
                   }}
                   showsUserLocation={false}
                   showsMyLocationButton={false}
-                  radius={10}
-                  extent={512}
-                  minZoom={5}
-                  maxZoom={22}
-                  minPoints={3}
-                  edgePadding={{ top: 50, left: 50, bottom: 50, right: 50 }}
-                  renderCluster={renderCluster}
-                  clusterColor="#4ECDC4"
-                  clusterTextColor="#fff"
-                  clusterFontFamily="System"
+                  // Clusters are recomputed for the region the user settled on
+                  onRegionChangeComplete={onRegionChangeComplete}
               >
                 {/* Current user's marker - uses up-to-date data from online_users */}
                 {currentUserData && userLat !== null && userLng !== null && (
@@ -956,32 +966,25 @@ export default function MapScreen() {
                   />
                 )}
 
-                {/* Markers of other online users */}
-                {onlineUsers
-                  // Parse coordinates once and drop invalid users before rendering: the children
-                  // list must not contain nulls, or react-native-maps can insert markers at a wrong index
-                  .map((user: any) => ({
-                    user,
-                    userId: user.id ?? user.user_id,
-                    userLat: parseCoordinate(user.lat),
-                    userLng: parseCoordinate(user.lng),
-                  }))
-                  .filter(({ userId, userLat, userLng }) => userId !== undefined && userLat !== null && userLng !== null)
-                  .map(({ user: actualUser, userId, userLat, userLng }) => {
-                  // onlineUsers holds the freshest data (thoughts, image, name, age, etc.), refreshed every 3 seconds
+                {/* Markers of other online users and clusters: one flat list with stable keys */}
+                {mapItems.map((item) => {
+                  const [longitude, latitude] = item.geometry.coordinates;
+                  if ('cluster' in item.properties && item.properties.cluster) {
+                    return renderCluster(item.properties.cluster_id, item.properties.point_count, latitude, longitude);
+                  }
 
+                  // onlineUsers holds the freshest data (thoughts, image, name, age, etc.), refreshed every 3 seconds
+                  const actualUser = item.properties.data;
+                  const userId = actualUser.id ?? actualUser.user_id;
                   // Generate a unique marker color based on user data
                   const markerColor = getUserMarkerColor(actualUser);
 
                   return (
                       <AvatarMarker
                           // Stable key: changed thoughts/photo update the marker instead of re-creating it
-                          key={`user-${userId}`}
+                          key={item.properties.key}
                           identifier={String(userId)}
-                          coordinate={{
-                            latitude: userLat as number,
-                            longitude: userLng as number,
-                          }}
+                          coordinate={{ latitude, longitude }}
                           onPress={() => handleMarkerPress(actualUser)}
                           imageUri={getImageUrl(actualUser.image)}
                           avatarStyle={[mapStyles.otherUserMarkerAvatar, { borderColor: markerColor }]}
