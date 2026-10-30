@@ -30,6 +30,8 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [cropMode, setCropMode] = useState(false);
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
+  // Pixel size of the picked photo, the same image ImageManipulator crops
+  const [selectedImageSize, setSelectedImageSize] = useState<{ width: number; height: number } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
@@ -375,7 +377,9 @@ export default function ProfileScreen() {
       });
 
       if (!result.canceled && result.assets[0]) {
-        setSelectedImageUri(result.assets[0].uri);
+        const asset = result.assets[0];
+        setSelectedImageUri(asset.uri);
+        setSelectedImageSize(asset.width && asset.height ? { width: asset.width, height: asset.height } : null);
         setCropMode(true);
       }
     } catch (error) {
@@ -1090,6 +1094,8 @@ export default function ProfileScreen() {
         <ImageCropModal
           visible={cropMode}
           imageUri={selectedImageUri}
+          imageWidth={selectedImageSize?.width}
+          imageHeight={selectedImageSize?.height}
           onSave={onSave}
           onDiscard={onDiscard}
         />

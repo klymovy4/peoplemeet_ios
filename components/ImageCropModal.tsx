@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Modal, Pressable, Text, Dimensions , Image} from 'react-native';
+import { View, StyleSheet, Modal, Pressable, Text, Dimensions, Image } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
@@ -8,13 +8,17 @@ import Animated, {
 import { Image as ExpoImage } from 'expo-image';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const INITIAL_CROP_SIZE = Math.min(SCREEN_WIDTH * 0.8, SCREEN_HEIGHT * 0.6);
-const MIN_CROP_SIZE = 150;
-const MAX_CROP_SIZE = Math.min(SCREEN_WIDTH * 0.95, SCREEN_HEIGHT * 0.8);
+const MIN_CROP_SIZE = 80;
+// Share of the shorter image side taken by the crop frame when it opens
+const INITIAL_CROP_RATIO = 0.9;
 
 interface ImageCropModalProps {
   visible: boolean;
   imageUri: string;
+  // Pixel size of the picked image. The crop is computed in these pixels, so it must
+  // describe the same (EXIF-rotated) image that ImageManipulator crops
+  imageWidth?: number;
+  imageHeight?: number;
   onSave: (cropData: {
     x: number;
     y: number;
@@ -29,41 +33,78 @@ interface ImageCropModalProps {
 export default function ImageCropModal({
   visible,
   imageUri,
+  imageWidth,
+  imageHeight,
   onSave,
   onDiscard,
 }: ImageCropModalProps) {
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [imageLayout, setImageLayout] = useState({ x: 0, y: 0, width: 0, height: 0 });
 
-  const cropSize = useSharedValue(INITIAL_CROP_SIZE);
-  const cropX = useSharedValue(SCREEN_WIDTH / 2 - INITIAL_CROP_SIZE / 2);
-  const cropY = useSharedValue(SCREEN_HEIGHT / 2 - INITIAL_CROP_SIZE / 2);
+  const cropSize = useSharedValue(0);
+  const cropX = useSharedValue(0);
+  const cropY = useSharedValue(0);
   const cropStartX = useSharedValue(0);
   const cropStartY = useSharedValue(0);
-  const cropStartSize = useSharedValue(INITIAL_CROP_SIZE);
+  const cropStartSize = useSharedValue(0);
+  // The visible image rectangle (container coordinates): the crop frame never leaves it,
+  // so what is inside the frame is exactly what gets saved
+  const boundsLeft = useSharedValue(0);
+  const boundsTop = useSharedValue(0);
+  const boundsRight = useSharedValue(0);
+  const boundsBottom = useSharedValue(0);
 
   useEffect(() => {
-    if (visible && imageUri) {
-      // Reset values on open
-      cropSize.value = INITIAL_CROP_SIZE;
-      cropX.value = SCREEN_WIDTH / 2 - INITIAL_CROP_SIZE / 2;
-      cropY.value = SCREEN_HEIGHT / 2 - INITIAL_CROP_SIZE / 2;
-      cropStartX.value = 0;
-      cropStartY.value = 0;
-      cropStartSize.value = INITIAL_CROP_SIZE;
+    if (!visible || !imageUri) return;
 
-      // Load the image size
-      Image.getSize(
-        imageUri,
-        (width, height) => {
-          setImageSize({ width, height });
-        },
-        (error) => {
-          console.error('Error getting image size:', error);
-        }
-      );
+    if (imageWidth && imageHeight) {
+      setImageSize({ width: imageWidth, height: imageHeight });
+      return;
     }
-  }, [visible, imageUri]);
+    // Fallback when the caller doesn't know the size
+    Image.getSize(
+      imageUri,
+      (width, height) => setImageSize({ width, height }),
+      (error) => console.error('Error getting image size:', error)
+    );
+  }, [visible, imageUri, imageWidth, imageHeight]);
+
+  // Where the image is actually drawn inside its view (contentFit="contain" letterboxes it)
+  const getDisplayRect = () => {
+    if (!imageSize.width || !imageSize.height || !imageLayout.width || !imageLayout.height) return null;
+
+    const imageAspectRatio = imageSize.width / imageSize.height;
+    let displayWidth = imageLayout.width;
+    let displayHeight = imageLayout.width / imageAspectRatio;
+    if (displayHeight > imageLayout.height) {
+      displayHeight = imageLayout.height;
+      displayWidth = displayHeight * imageAspectRatio;
+    }
+
+    return {
+      left: imageLayout.x + (imageLayout.width - displayWidth) / 2,
+      top: imageLayout.y + (imageLayout.height - displayHeight) / 2,
+      width: displayWidth,
+      height: displayHeight,
+    };
+  };
+
+  // Once the image is measured, limit the frame to it and center the frame
+  useEffect(() => {
+    const rect = getDisplayRect();
+    if (!visible || !rect) return;
+
+    boundsLeft.value = rect.left;
+    boundsTop.value = rect.top;
+    boundsRight.value = rect.left + rect.width;
+    boundsBottom.value = rect.top + rect.height;
+
+    const size = Math.min(rect.width, rect.height) * INITIAL_CROP_RATIO;
+    cropSize.value = size;
+    cropX.value = rect.left + (rect.width - size) / 2;
+    cropY.value = rect.top + (rect.height - size) / 2;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, imageSize, imageLayout]);
 
   // Gesture for moving the crop
   const cropPanGesture = Gesture.Pan()
@@ -72,21 +113,12 @@ export default function ImageCropModal({
       cropStartY.value = cropY.value;
     })
     .onUpdate((e) => {
-      const currentSize = cropSize.value;
-      const newX = cropStartX.value + e.translationX;
-      const newY = cropStartY.value + e.translationY;
-      
-      cropX.value = Math.max(
-        0,
-        Math.min(SCREEN_WIDTH - currentSize, newX)
-      );
-      cropY.value = Math.max(
-        0,
-        Math.min(SCREEN_HEIGHT - currentSize, newY)
-      );
+      const size = cropSize.value;
+      cropX.value = Math.max(boundsLeft.value, Math.min(boundsRight.value - size, cropStartX.value + e.translationX));
+      cropY.value = Math.max(boundsTop.value, Math.min(boundsBottom.value - size, cropStartY.value + e.translationY));
     });
 
-  // Gesture for resizing the crop (dragging a corner)
+  // Gesture for resizing the crop by dragging a corner: the opposite corner stays in place
   const createResizeGesture = (corner: 'topRight' | 'bottomRight' | 'topLeft' | 'bottomLeft') => {
     return Gesture.Pan()
       .onStart(() => {
@@ -95,51 +127,28 @@ export default function ImageCropModal({
         cropStartY.value = cropY.value;
       })
       .onUpdate((e) => {
-        const deltaX = e.translationX;
-        const deltaY = e.translationY;
-        
-        // Compute the size change depending on the corner
-        let sizeDelta = 0;
-        if (corner === 'bottomRight') {
-          // Bottom-right corner: moving right/down increases the size
-          sizeDelta = Math.max(deltaX, deltaY);
-        } else if (corner === 'topLeft') {
-          // Top-left corner: moving left/up increases the size
-          sizeDelta = -Math.min(deltaX, deltaY);
-        } else if (corner === 'topRight') {
-          // Top-right corner: moving right/up increases the size
-          sizeDelta = deltaX - deltaY;
-        } else if (corner === 'bottomLeft') {
-          // Bottom-left corner: moving left/down increases the size
-          sizeDelta = deltaY - deltaX;
-        }
-        
-        const newSize = Math.max(
-          MIN_CROP_SIZE,
-          Math.min(MAX_CROP_SIZE, cropStartSize.value + sizeDelta)
-        );
-        
+        const startSize = cropStartSize.value;
+        const left = cropStartX.value;
+        const top = cropStartY.value;
+        const right = left + startSize;
+        const bottom = top + startSize;
+        const growsLeft = corner === 'topLeft' || corner === 'bottomLeft';
+        const growsUp = corner === 'topLeft' || corner === 'topRight';
+
+        // Dragging away from the opposite corner grows the frame
+        const deltaX = growsLeft ? -e.translationX : e.translationX;
+        const deltaY = growsUp ? -e.translationY : e.translationY;
+
+        // The frame can't grow past the image edges on the moving sides
+        const maxWidth = growsLeft ? right - boundsLeft.value : boundsRight.value - left;
+        const maxHeight = growsUp ? bottom - boundsTop.value : boundsBottom.value - top;
+        const maxSize = Math.min(maxWidth, maxHeight);
+        const minSize = Math.min(MIN_CROP_SIZE, maxSize);
+
+        const newSize = Math.max(minSize, Math.min(maxSize, startSize + Math.max(deltaX, deltaY)));
         cropSize.value = newSize;
-        
-        // Adjust the crop position depending on the corner
-        const sizeChange = newSize - cropStartSize.value;
-        if (corner === 'bottomRight') {
-          // Bottom-right corner: position does not change
-          cropX.value = Math.max(0, Math.min(SCREEN_WIDTH - newSize, cropStartX.value));
-          cropY.value = Math.max(0, Math.min(SCREEN_HEIGHT - newSize, cropStartY.value));
-        } else if (corner === 'topLeft') {
-          // Top-left corner: move left/up
-          cropX.value = Math.max(0, Math.min(SCREEN_WIDTH - newSize, cropStartX.value - sizeChange));
-          cropY.value = Math.max(0, Math.min(SCREEN_HEIGHT - newSize, cropStartY.value - sizeChange));
-        } else if (corner === 'topRight') {
-          // Top-right corner: move up only
-          cropX.value = Math.max(0, Math.min(SCREEN_WIDTH - newSize, cropStartX.value));
-          cropY.value = Math.max(0, Math.min(SCREEN_HEIGHT - newSize, cropStartY.value - sizeChange));
-        } else if (corner === 'bottomLeft') {
-          // Bottom-left corner: move left only
-          cropX.value = Math.max(0, Math.min(SCREEN_WIDTH - newSize, cropStartX.value - sizeChange));
-          cropY.value = Math.max(0, Math.min(SCREEN_HEIGHT - newSize, cropStartY.value));
-        }
+        cropX.value = growsLeft ? right - newSize : left;
+        cropY.value = growsUp ? bottom - newSize : top;
       });
   };
 
@@ -164,111 +173,35 @@ export default function ImageCropModal({
     };
   });
 
+  // Avatars are shown as circles on the map: the guide shows what stays visible
+  const cropCircleStyle = useAnimatedStyle(() => {
+    return {
+      width: cropSize.value,
+      height: cropSize.value,
+      borderRadius: cropSize.value / 2,
+    };
+  });
 
   const handleSave = () => {
-    if (!imageSize.width || !imageSize.height || !imageLayout.width || !imageLayout.height) return;
+    const rect = getDisplayRect();
+    if (!rect) return;
 
-    // Compute the actual size of the displayed image, accounting for aspect ratio
-    const imageAspectRatio = imageSize.width / imageSize.height;
-    const containerWidth = imageLayout.width;
-    const containerHeight = imageLayout.height;
-    
-    let displayWidth = containerWidth;
-    let displayHeight = containerHeight;
+    // Screen points -> source image pixels
+    const scale = imageSize.width / rect.width;
+    const shortSide = Math.min(imageSize.width, imageSize.height);
 
-    // Compute the actual image size, preserving proportions
-    if (containerWidth / containerHeight > imageAspectRatio) {
-      displayHeight = containerHeight;
-      displayWidth = displayHeight * imageAspectRatio;
-    } else {
-      displayWidth = containerWidth;
-      displayHeight = displayWidth / imageAspectRatio;
-    }
+    const size = Math.min(cropSize.value * scale, shortSide);
+    const x = Math.max(0, Math.min(imageSize.width - size, (cropX.value - rect.left) * scale));
+    const y = Math.max(0, Math.min(imageSize.height - size, (cropY.value - rect.top) * scale));
 
-    // Compute the image offset relative to the container (centering)
-    const imageOffsetX = (containerWidth - displayWidth) / 2;
-    const imageOffsetY = (containerHeight - displayHeight) / 2;
-
-    // Compute the image position on screen
-    const imageScreenX = imageLayout.x + imageOffsetX;
-    const imageScreenY = imageLayout.y + imageOffsetY;
-
-    // Scale for converting screen coordinates to source image coordinates
-    const scaleX = imageSize.width / displayWidth;
-    const scaleY = imageSize.height / displayHeight;
-
-    // Compute the crop coordinates on screen
-    const cropScreenX = cropX.value;
-    const cropScreenY = cropY.value;
-    const currentCropSize = cropSize.value;
-
-    // Compute the intersection of the crop and the image
-    const cropLeft = cropScreenX;
-    const cropTop = cropScreenY;
-    const cropRight = cropScreenX + currentCropSize;
-    const cropBottom = cropScreenY + currentCropSize;
-
-    const imageLeft = imageScreenX;
-    const imageTop = imageScreenY;
-    const imageRight = imageScreenX + displayWidth;
-    const imageBottom = imageScreenY + displayHeight;
-
-    // Find the intersection of the crop and the image
-    const intersectLeft = Math.max(cropLeft, imageLeft);
-    const intersectTop = Math.max(cropTop, imageTop);
-    const intersectRight = Math.min(cropRight, imageRight);
-    const intersectBottom = Math.min(cropBottom, imageBottom);
-
-    // If there is no intersection, use the image center
-    if (intersectLeft >= intersectRight || intersectTop >= intersectBottom) {
-      const centerX = imageScreenX + displayWidth / 2;
-      const centerY = imageScreenY + displayHeight / 2;
-      const halfCropSize = currentCropSize / 2;
-      
-      const cropData = {
-        x: Math.max(0, (centerX - halfCropSize - imageScreenX) * scaleX),
-        y: Math.max(0, (centerY - halfCropSize - imageScreenY) * scaleY),
-        width: Math.min(currentCropSize * scaleX, imageSize.width),
-        height: Math.min(currentCropSize * scaleY, imageSize.height),
-        imageWidth: imageSize.width,
-        imageHeight: imageSize.height,
-      };
-
-      cropData.x = Math.max(0, Math.min(imageSize.width - cropData.width, cropData.x));
-      cropData.y = Math.max(0, Math.min(imageSize.height - cropData.height, cropData.y));
-      cropData.width = Math.min(cropData.width, imageSize.width - cropData.x);
-      cropData.height = Math.min(cropData.height, imageSize.height - cropData.y);
-
-      onSave(cropData);
-      return;
-    }
-
-    // Convert the intersection from screen coordinates to source image coordinates
-    const cropData = {
-      x: Math.max(0, (intersectLeft - imageScreenX) * scaleX),
-      y: Math.max(0, (intersectTop - imageScreenY) * scaleY),
-      width: Math.min((intersectRight - intersectLeft) * scaleX, imageSize.width),
-      height: Math.min((intersectBottom - intersectTop) * scaleY, imageSize.height),
+    onSave({
+      x,
+      y,
+      width: size,
+      height: size,
       imageWidth: imageSize.width,
       imageHeight: imageSize.height,
-    };
-
-    // Clamp coordinates to the image bounds
-    cropData.x = Math.max(0, Math.min(imageSize.width - cropData.width, cropData.x));
-    cropData.y = Math.max(0, Math.min(imageSize.height - cropData.height, cropData.y));
-    cropData.width = Math.min(cropData.width, imageSize.width - cropData.x);
-    cropData.height = Math.min(cropData.height, imageSize.height - cropData.y);
-
-    // Make sure the crop is square (use the smaller side)
-    const minSize = Math.min(cropData.width, cropData.height);
-    cropData.width = minSize;
-    cropData.height = minSize;
-
-    // Recalculate the position for centering
-    cropData.x = Math.max(0, Math.min(imageSize.width - cropData.width, cropData.x));
-    cropData.y = Math.max(0, Math.min(imageSize.height - cropData.height, cropData.y));
-
-    onSave(cropData);
+    });
   };
 
   if (!visible) return null;
@@ -295,12 +228,6 @@ export default function ImageCropModal({
             source={{ uri: imageUri }}
             style={styles.image}
             contentFit="contain"
-            onLoad={(e) => {
-              const { width, height } = e.source;
-              if (width && height) {
-                setImageSize({ width, height });
-              }
-            }}
             onLayout={(e) => {
               const { x, y, width, height } = e.nativeEvent.layout;
               setImageLayout({ x, y, width, height });
@@ -310,6 +237,7 @@ export default function ImageCropModal({
           {/* Crop frame with handles */}
           <Animated.View style={[styles.cropOverlay, cropAnimatedStyle]}>
             <Animated.View style={[styles.cropBorder, cropBorderStyle]} />
+            <Animated.View style={[styles.cropCircle, cropCircleStyle]} pointerEvents="none" />
             
             {/* Resize handles */}
             <GestureDetector gesture={resizeTopLeftGesture}>
@@ -373,6 +301,12 @@ const styles = StyleSheet.create({
   cropBorder: {
     borderWidth: 3,
     borderColor: '#fff',
+    position: 'absolute',
+  },
+  cropCircle: {
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
+    borderStyle: 'dashed',
     position: 'absolute',
   },
   resizeHandle: {
