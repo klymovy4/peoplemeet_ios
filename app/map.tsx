@@ -40,20 +40,29 @@ const THOUGHTS_WIDTH = 150;
 const THOUGHTS_OVERLAP = 15;
 
 // On Android a custom marker is rendered into a bitmap the size of its root View, so the
-// bubble would be clipped if it overflowed. With thoughts the root View is expanded to fit
-// the bubble, and the marker is re-anchored so the coordinate stays on the avatar center
+// bubble would be clipped if it overflowed: with thoughts the root View is expanded to fit it.
+// The View is made symmetric around the avatar (transparent space on the other sides), so its
+// center IS the avatar center and the marker needs no centerOffset/anchor tweaks: those are
+// handled differently by react-native-maps versions and made the marker drift when zooming
 const getThoughtsLayout = (avatarSize: number) => {
-  const width = avatarSize - THOUGHTS_OVERLAP + THOUGHTS_WIDTH;
-  const height = THOUGHTS_TOP + avatarSize;
-  const avatarCenterX = avatarSize / 2;
-  const avatarCenterY = THOUGHTS_TOP + avatarSize / 2;
-  const anchorProps = Platform.OS === 'ios'
-    // Apple Maps: offset of the View center from the coordinate, in points
-    ? { centerOffset: { x: width / 2 - avatarCenterX, y: height / 2 - avatarCenterY } }
-    // Google Maps: anchor point as a fraction of the View size
-    : { anchor: { x: avatarCenterX / width, y: avatarCenterY / height } };
-  return { width, height, anchorProps };
+  const halfAvatar = avatarSize / 2;
+  // From the avatar center to the bubble's right edge and to its top
+  const toRight = avatarSize - THOUGHTS_OVERLAP + THOUGHTS_WIDTH - halfAvatar;
+  const toTop = THOUGHTS_TOP + halfAvatar;
+  const width = toRight * 2;
+  const height = toTop * 2;
+  return {
+    width,
+    height,
+    avatarLeft: width / 2 - halfAvatar,
+    avatarTop: height / 2 - halfAvatar,
+    bubbleLeft: width / 2 - halfAvatar + avatarSize - THOUGHTS_OVERLAP,
+  };
 };
+
+// Google Maps anchors custom markers by the bottom center by default; the center keeps the
+// avatar on the coordinate (Apple Maps already centers custom views)
+const MARKER_ANCHOR = Platform.OS === 'android' ? { anchor: { x: 0.5, y: 0.5 } } : {};
 
 // Marker with a custom avatar view. tracksViewChanges stays on only until the avatar
 // is displayed: when it is always on, iOS keeps redrawing every marker and the map lags
@@ -92,12 +101,12 @@ function AvatarMarker({ coordinate, identifier, onPress, imageUri, avatarStyle, 
       coordinate={coordinate}
       onPress={onPress}
       tracksViewChanges={tracksViewChanges}
-      {...thoughtsLayout?.anchorProps}
+      {...MARKER_ANCHOR}
     >
       {thoughtsLayout ? (
         <View style={{ width: thoughtsLayout.width, height: thoughtsLayout.height }}>
-          <View style={{ position: 'absolute', left: 0, top: THOUGHTS_TOP }}>{avatar}</View>
-          <View style={[mapStyles.markerThoughtsContainer, { left: avatarSize - THOUGHTS_OVERLAP }]}>
+          <View style={{ position: 'absolute', left: thoughtsLayout.avatarLeft, top: thoughtsLayout.avatarTop }}>{avatar}</View>
+          <View style={[mapStyles.markerThoughtsContainer, { left: thoughtsLayout.bubbleLeft }]}>
             <Text style={mapStyles.markerThoughts} numberOfLines={2}>
               {thoughts}
             </Text>
