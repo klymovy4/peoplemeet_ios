@@ -16,6 +16,8 @@ import {
   View,
 } from 'react-native';
 import Toast from 'react-native-toast-message';
+import { Ionicons } from '@expo/vector-icons';
+import { openLegalPage } from '@/services/legal';
 
 export default function SignUpScreen() {
   const { colors } = useTheme();
@@ -23,6 +25,7 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState('');
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
   const [loading, setLoading] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const handleEmailChange = (text: string) => {
     setEmail(text);
@@ -43,6 +46,16 @@ export default function SignUpScreen() {
         type: 'error',
         text1: 'Error',
         text2: 'Please fill in all fields',
+      });
+      return;
+    }
+
+    // Accepting the rules is required (App Store / Google Play rule for user-generated content)
+    if (!acceptedTerms) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Please confirm you are 18+ and accept the Terms of Use',
       });
       return;
     }
@@ -153,6 +166,26 @@ export default function SignUpScreen() {
             />
           </View>
 
+          {/* Terms acceptance */}
+          <Pressable
+            style={styles.termsRow}
+            onPress={() => setAcceptedTerms((value) => !value)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: acceptedTerms }}
+          >
+            <Ionicons
+              name={acceptedTerms ? 'checkbox' : 'square-outline'}
+              size={22}
+              color={acceptedTerms ? '#4ECDC4' : '#999'}
+            />
+            <Text style={[styles.termsText, { color: colors.text }]}>
+              I am 18+ and agree to the{' '}
+              <Text style={styles.termsLink} onPress={() => openLegalPage('terms')}>Terms of Use</Text>
+              {' '}and{' '}
+              <Text style={styles.termsLink} onPress={() => openLegalPage('privacy')}>Privacy Policy</Text>
+            </Text>
+          </Pressable>
+
           {/* Sign up button */}
           <Pressable 
             style={[styles.signUpButton, loading && styles.signUpButtonDisabled]} 
@@ -224,6 +257,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 8,
     borderRadius: 4,
+  },
+  termsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 8,
+  },
+  termsText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  termsLink: {
+    color: '#2aa79d',
+    textDecorationLine: 'underline',
   },
   signUpButton: {
     // TODO: Add sign up button styling (background color, padding, etc.)

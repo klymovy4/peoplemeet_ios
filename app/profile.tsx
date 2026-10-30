@@ -19,6 +19,7 @@ import * as Location from 'expo-location';
 import ImageCropModal from '@/components/ImageCropModal';
 import MessagesModal from '@/components/MessagesModal';
 import DeleteAccountModal from '@/components/DeleteAccountModal';
+import { openLegalPage } from '@/services/legal';
 
 // Picked photos are scaled down to this long side before cropping (the avatar is 800x800)
 const MAX_PICKED_IMAGE_SIDE = 1600;
@@ -1149,6 +1150,12 @@ export default function ProfileScreen() {
           <Pressable style={styles.deleteAccountButton} onPress={() => setDeleteAccountVisible(true)}>
             <Text style={styles.deleteAccountButtonText}>Delete account</Text>
           </Pressable>
+
+          <View style={styles.legalLinks}>
+            <Text style={styles.legalLink} onPress={() => openLegalPage('privacy')}>Privacy Policy</Text>
+            <Text style={styles.legalSeparator}>·</Text>
+            <Text style={styles.legalLink} onPress={() => openLegalPage('terms')}>Terms of Use</Text>
+          </View>
         </View>
       </ScrollView>
 
@@ -1491,6 +1498,21 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 16,
     fontWeight: '600',
+  },
+  legalLinks: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  legalLink: {
+    color: '#999',
+    fontSize: 13,
+    textDecorationLine: 'underline',
+  },
+  legalSeparator: {
+    color: '#999',
+    fontSize: 13,
   },
   deleteAccountButton: {
     alignItems: 'center',
