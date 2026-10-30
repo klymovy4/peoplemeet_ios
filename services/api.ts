@@ -112,6 +112,10 @@ export const unblockUser = (token: string, user_id: number) =>
 
 export const getBlockedUsers = (token: string) => request('/get_blocked_users', { token });
 
+// Deletes the account and all its data; the password confirms it's really the owner
+export const deleteAccount = (token: string, password: string) =>
+  request('/delete_account', { token, password });
+
 // Reporting also blocks the user on the server
 export const reportUser = (
   token: string,

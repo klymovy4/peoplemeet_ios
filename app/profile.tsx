@@ -1,5 +1,5 @@
 import { getToken, removeToken, saveUserData } from '@/services/auth';
-import { getSelf, uploadAvatar, editProfile, getOnline, readMessages, sendMessage } from '@/services/api';
+import { getSelf, uploadAvatar, editProfile, getOnline, readMessages, sendMessage, deleteAccount } from '@/services/api';
 import { enableUsersOnlinePolling, disableUsersOnlinePolling, setUsersOnlineCallback } from '@/services/usersOnlineInterval';
 import { startMessagesInterval, stopMessagesInterval, setMessagesCallback } from '@/services/messagesInterval';
 import { startLocationTracking, stopLocationTracking } from '@/services/locationTracking';
@@ -18,6 +18,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import ImageCropModal from '@/components/ImageCropModal';
 import MessagesModal from '@/components/MessagesModal';
+import DeleteAccountModal from '@/components/DeleteAccountModal';
 
 // Picked photos are scaled down to this long side before cropping (the avatar is 800x800)
 const MAX_PICKED_IMAGE_SIDE = 1600;
@@ -52,6 +53,7 @@ export default function ProfileScreen() {
   const [messagesUsers, setMessagesUsers] = useState<any>({});
   const [messagesData, setMessagesData] = useState<any>({});
   const [selectedChatUser, setSelectedChatUser] = useState<any | null>(null);
+  const [deleteAccountVisible, setDeleteAccountVisible] = useState(false);
   const [messageText, setMessageText] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const [showUserInfo, setShowUserInfo] = useState(false);
@@ -372,6 +374,26 @@ export default function ProfileScreen() {
       await removeToken();
       router.replace('/');
     }
+  };
+
+  // Returns an error message for the modal, or null when the account is gone
+  const handleDeleteAccount = async (password: string): Promise<string | null> => {
+    const token = await getToken();
+    if (!token) return 'Not logged in';
+
+    const result = await deleteAccount(token, password);
+    if (result.status !== 'success') {
+      return result.data?.message || 'Failed to delete the account';
+    }
+
+    disableUsersOnlinePolling();
+    stopLocationTracking();
+    stopMessagesInterval();
+    await removeToken();
+    setDeleteAccountVisible(false);
+    Toast.show({ type: 'success', text1: 'Account deleted', text2: 'Your account and data have been deleted' });
+    router.replace('/');
+    return null;
   };
 
   const openFileDialog = async () => {
@@ -1123,8 +1145,18 @@ export default function ProfileScreen() {
           <Pressable style={styles.logoutButton} onPress={handleLogout}>
             <Text style={styles.logoutButtonText}>Logout</Text>
           </Pressable>
+
+          <Pressable style={styles.deleteAccountButton} onPress={() => setDeleteAccountVisible(true)}>
+            <Text style={styles.deleteAccountButtonText}>Delete account</Text>
+          </Pressable>
         </View>
       </ScrollView>
+
+      <DeleteAccountModal
+        visible={deleteAccountVisible}
+        onClose={() => setDeleteAccountVisible(false)}
+        onConfirm={handleDeleteAccount}
+      />
 
       {/* Crop modal */}
       {selectedImageUri && (
@@ -1459,6 +1491,15 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 16,
     fontWeight: '600',
+  },
+  deleteAccountButton: {
+    alignItems: 'center',
+    padding: 15,
+    marginTop: 10,
+  },
+  deleteAccountButtonText: {
+    color: '#ff4444',
+    fontSize: 15,
   },
   logoutButton: {
     borderRadius: 8,
