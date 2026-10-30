@@ -31,8 +31,8 @@ export default function RootLayout() {
           <Stack.Screen name="map" options={{ headerShown: false }} />
           <Stack.Screen name="blocked-users" options={{ title: 'Blocked users', headerBackTitle: 'Profile' }} />
         </Stack>
-        {/* Light status bar icons on the navy splash, dark ones on the app's white screens */}
-        <StatusBar style={splashVisible ? 'light' : 'dark'} />
+        {/* Light backgrounds everywhere (splash included): dark status bar icons */}
+        <StatusBar style="dark" />
         <Toast />
         {splashVisible && <AnimatedSplash onFinish={() => setSplashVisible(false)} />}
       </ThemeProvider>

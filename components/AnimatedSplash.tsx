@@ -13,7 +13,7 @@ import Animated, {
 
 // Must match the native splash in app.json (expo-splash-screen: backgroundColor, imageWidth),
 // so the switch from the native splash to this view is invisible
-const SPLASH_BACKGROUND = '#1E1B4B';
+const SPLASH_BACKGROUND = '#E9F6EC';
 const LOGO_SIZE = 200;
 
 // One heartbeat: a quick double pulse
