@@ -193,7 +193,7 @@ export default function MessagesModal({
     // Show a confirmation before deleting
     Alert.alert(
       'Delete conversation',
-      'Are you sure you want to delete the conversation with this user? This action cannot be undone.',
+      'The conversation will be deleted for you only. The other person will still see it.',
       [
         {
           text: 'Cancel',
@@ -222,7 +222,7 @@ export default function MessagesModal({
                 Toast.show({
                   type: 'success',
                   text1: 'Success',
-                  text2: 'Conversation deleted',
+                  text2: 'Conversation deleted for you',
                 });
                 
                 // Close the messages modal
