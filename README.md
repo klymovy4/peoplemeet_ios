@@ -9,6 +9,18 @@ Mobile app (iOS + Android) built with [Expo](https://expo.dev) (SDK 54), React N
 
 ---
 
+## Cheat sheet
+
+| When | iPhone (cable) | Simulator | Notes |
+|---|---|---|---|
+| **Every day** | open the PeopleMeet app | press `i` | after `npx expo start --dev-client` (one server for both) |
+| **Once a week** | `npx expo run:ios --device` | — | the free Apple ID install expires after 7 days; the simulator has no limit |
+| **After a native change** (new/updated library, `app.json`, icons, splash) | `npx expo run:ios --device` | `npx expo run:ios` | rebuild **both**: an old build can't load the new code |
+| **Something is stuck** ("Refreshing...", stale code) | | | `Ctrl+C`, then `npx expo start --dev-client -c` |
+
+- Run only **one** `expo run:ios` at a time (iPhone and simulator builds share Xcode's build folder).
+- A plain code change (`.ts`/`.tsx`) never needs a rebuild: save the file, or press `r` in the dev server.
+
 ## Daily workflow (iPhone + simulator)
 
 Everyday development runs on a **development build** of the app (not Expo Go). The real iPhone and the simulator both connect to the same dev server on the Mac, and every saved file shows up on both instantly (Fast Refresh).
@@ -83,6 +95,8 @@ npx expo run:ios            # build and install in the simulator
 | `Port 8081 is being used` | A server is already running somewhere — close that terminal, or `kill $(lsof -t -i:8081)` |
 | Pressing `i` says *"No development build (ua.com.peoplemeet) for this project is installed"* | The simulator doesn't have the app yet — run `npx expo run:ios` once |
 | The app on the iPhone doesn't open / closes immediately | The 7-day signing expired — run `npx expo run:ios --device` |
+| *"Unmatched Route: page could not be found"* when opening a screen, or *"'RNMapsAirModule' could not be found"* / *"… could not be found. Verify that a module by this name is registered in the native binary"* | That device still runs an old build after a library update — rebuild it: `npx expo run:ios --device` (iPhone) or `npx expo run:ios` (simulator) |
+| *"database is locked … two concurrent builds"* | Another `expo run:ios` is still running — wait for it to finish (or stop it), then run again |
 | *"Unable to launch … profile has not been explicitly trusted"* | On the iPhone: **Settings → General → VPN & Device Management** → your Apple ID → **Trust** |
 | *"No code signing certificates are available"* | See [Xcode signing](#4-xcode-signing-free-apple-id) |
 | `pod: command not found` / Expo tries to install CocoaPods with Homebrew | Run `source ~/.zshrc` or open a new terminal (see [CocoaPods](#3-cocoapods-intel-mac)) |
