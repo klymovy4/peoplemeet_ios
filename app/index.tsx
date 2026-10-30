@@ -2,8 +2,8 @@ import { loginUser } from '@/services/api';
 import { saveToken, saveUserData } from '@/services/auth';
 import { startMessagesInterval } from '@/services/messagesInterval';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Toast from 'react-native-toast-message';
 
 export default function LoginScreen() {
@@ -11,6 +11,7 @@ export default function LoginScreen() {
    const [email, setEmail] = useState('');
    const [password, setPassword] = useState('');
    const [loading, setLoading] = useState(false);
+   const passwordRef = useRef<TextInput>(null);
 
    // Prefill email from router params
    useEffect(() => {
@@ -28,6 +29,9 @@ export default function LoginScreen() {
    };
 
    const handleLogin = async () => {
+      // The Return key can trigger login while a request is already in flight
+      if (loading) return;
+
       if (!email || !password) {
          Toast.show({
             type: 'error',
@@ -84,8 +88,11 @@ export default function LoginScreen() {
    };
 
    return (
-       <View style={styles.container}>
-          <View style={styles.content}>
+       <KeyboardAvoidingView
+           style={styles.container}
+           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+       >
+          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
              {/* Title placeholder */}
              <Text style={styles.title}>People Meet</Text>
 
@@ -102,6 +109,12 @@ export default function LoginScreen() {
                        placeholder=""
                        autoCapitalize="none"
                        keyboardType="email-address"
+                       textContentType="emailAddress"
+                       autoComplete="email"
+                       // Return moves to the password field
+                       returnKeyType="next"
+                       submitBehavior="submit"
+                       onSubmitEditing={() => passwordRef.current?.focus()}
                    />
                 </View>
 
@@ -109,11 +122,17 @@ export default function LoginScreen() {
                 <View style={styles.inputContainer}>
                    <Text style={styles.label}>Password</Text>
                    <TextInput
+                       ref={passwordRef}
                        style={styles.input}
                        value={password}
                        onChangeText={handlePasswordChange}
                        placeholder=""
                        secureTextEntry
+                       textContentType="password"
+                       autoComplete="current-password"
+                       // Return logs in
+                       returnKeyType="go"
+                       onSubmitEditing={handleLogin}
                    />
                 </View>
 
@@ -144,8 +163,8 @@ export default function LoginScreen() {
                    <Text style={styles.signUpLink}>Sign Up</Text>
                 </Pressable>
              </View>
-          </View>
-       </View>
+          </ScrollView>
+       </KeyboardAvoidingView>
    );
 }
 
@@ -155,7 +174,7 @@ const styles = StyleSheet.create({
       // TODO: Add background styling
    },
    content: {
-      flex: 1,
+      flexGrow: 1,
       justifyContent: 'center',
       alignItems: 'center',
       // TODO: Add padding/margin styling

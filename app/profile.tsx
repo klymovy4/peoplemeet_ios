@@ -5,6 +5,7 @@ import { startMessagesInterval, stopMessagesInterval, setMessagesCallback } from
 import { startLocationTracking, stopLocationTracking } from '@/services/locationTracking';
 import { playMessageSound } from '@/services/soundService';
 import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { formatMessageTime, getImageUrl, replaceEmoticons } from '@/app/utils/utils';
 import { useEffect, useState, useRef } from 'react';
@@ -17,8 +18,11 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import ImageCropModal from '@/components/ImageCropModal';
 import MessagesModal from '@/components/MessagesModal';
-// @ts-ignore - Picker may not have types
-import { Picker } from '@react-native-picker/picker';
+
+const GENDER_OPTIONS = [
+  { value: 'male', label: 'Male', icon: 'male' },
+  { value: 'female', label: 'Female', icon: 'female' },
+] as const;
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -976,16 +980,24 @@ export default function ProfileScreen() {
 
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Gender:</Text>
-                  <View style={styles.pickerContainer}>
-                    <Picker
-                      selectedValue={sex}
-                      onValueChange={(itemValue: string) => setSex(itemValue)}
-                      style={styles.picker}
-                    >
-                      <Picker.Item label="Select gender" value="" />
-                      <Picker.Item label="Male" value="male" />
-                      <Picker.Item label="Female" value="female" />
-                    </Picker>
+                  <View style={styles.genderOptions}>
+                    {GENDER_OPTIONS.map((option) => {
+                      const selected = sex === option.value;
+                      return (
+                        <Pressable
+                          key={option.value}
+                          style={[styles.genderOption, selected && styles.genderOptionSelected]}
+                          onPress={() => setSex(option.value)}
+                          accessibilityRole="radio"
+                          accessibilityState={{ selected }}
+                        >
+                          <Ionicons name={option.icon} size={18} color={selected ? '#fff' : '#666'} />
+                          <Text style={[styles.genderOptionText, selected && styles.genderOptionTextSelected]}>
+                            {option.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
                   </View>
                 </View>
 
@@ -1331,17 +1343,34 @@ const styles = StyleSheet.create({
     minHeight: 100,
     maxHeight: 150,
   },
-  pickerContainer: {
+  genderOptions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 4,
+  },
+  genderOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    padding: 12,
     borderWidth: 1,
     borderColor: '#e0e0e0',
     borderRadius: 8,
     backgroundColor: '#f9f9f9',
-    marginTop: 4,
-    overflow: 'hidden',
   },
-  picker: {
-    height: Platform.OS === 'ios' ? 150 : 50,
-    width: '100%',
+  genderOptionSelected: {
+    borderColor: '#4ECDC4',
+    backgroundColor: '#4ECDC4',
+  },
+  genderOptionText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  genderOptionTextSelected: {
+    color: '#fff',
+    fontWeight: '600',
   },
   saveButton: {
     borderRadius: 8,
