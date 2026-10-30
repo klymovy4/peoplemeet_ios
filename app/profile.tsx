@@ -7,7 +7,7 @@ import { playMessageSound } from '@/services/soundService';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { formatMessageTime, getImageUrl, replaceEmoticons } from '@/app/utils/utils';
+import { formatMessageTime, getImageUrl, replaceEmoticons } from '@/utils/utils';
 import { useEffect, useState, useRef } from 'react';
 import { ActivityIndicator, AppState, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View, TextInput, Platform, Switch } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

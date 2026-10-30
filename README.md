@@ -234,6 +234,6 @@ Build status: https://expo.dev/accounts/kuiiuiii/projects/peoplemeet/builds
 | `app/` | Screens (file-based routing): login (`index.tsx`), `signup`, `recover-password`, `profile`, `map` |
 | `components/` | Shared components: chat (`MessagesModal`), avatar cropping (`ImageCropModal`) |
 | `services/` | API client, auth storage, polling, location tracking, sounds |
-| `app/utils/`, `app/styles/` | Helpers and map styles |
+| `utils/`, `styles/`, `types/` | Helpers, map styles and shared types (kept outside `app/`: every file in `app/` is treated as a route) |
 | `app.json`, `app.config.js` | Expo config (`app.config.js` adds the Google Maps key from env) |
 | `eas.json` | EAS build profiles |

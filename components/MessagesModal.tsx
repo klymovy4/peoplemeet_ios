@@ -5,7 +5,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { removeConversation } from '@/services/api';
-import { replaceEmoticons } from '@/app/utils/utils';
+import { replaceEmoticons } from '@/utils/utils';
 
 interface MessagesModalProps {
   visible: boolean;

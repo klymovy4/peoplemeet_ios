@@ -15,8 +15,8 @@ import { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import MapView from 'react-native-map-clustering';
 import MessagesModal from '@/components/MessagesModal';
 import Toast from 'react-native-toast-message';
-import { getImageUrl, parseCoordinate, getUserMarkerColor, calculateDistance, formatMessageTime, replaceEmoticons } from '@/app/utils/utils';
-import { mapStyles } from '@/app/styles/mapStyles';
+import { getImageUrl, parseCoordinate, getUserMarkerColor, calculateDistance, formatMessageTime, replaceEmoticons } from '@/utils/utils';
+import { mapStyles } from '@/styles/mapStyles';
 
 type AvatarMarkerProps = {
   coordinate: { latitude: number; longitude: number };
