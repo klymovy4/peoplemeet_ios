@@ -89,6 +89,10 @@ export const readMessages = (token: string, chat_partner_id: number) =>
 export const sendMessage = (token: string, receiver_id: number, message_text: string) =>
   request('/send_message', { token, receiver_id, message_text });
 
+// Deletes your own message for everyone: both users see "Message deleted"
+export const deleteMessage = (token: string, message_id: number) =>
+  request('/delete_message', { token, message_id });
+
 export const removeConversation = (token: string, chat_partner_id: number) =>
   request('/remove_conversation', { token, chat_partner_id });
 

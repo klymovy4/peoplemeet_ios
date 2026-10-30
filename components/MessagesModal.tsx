@@ -4,7 +4,7 @@ import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-na
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
-import { removeConversation } from '@/services/api';
+import { deleteMessage, removeConversation } from '@/services/api';
 import { replaceEmoticons } from '@/utils/utils';
 import { useUserModeration } from '@/hooks/use-user-moderation';
 
@@ -162,11 +162,43 @@ export default function MessagesModal({
     onUserBlocked?.(userId);
   });
 
-  // Long press on a received message offers to report it
-  const handleMessageLongPress = (message: any) => {
+  const deleteForEveryone = async (message: any) => {
+    const token = await getToken();
+    if (!token) return;
+    const result = await deleteMessage(token, message.id);
+    if (result.status !== 'success') {
+      Toast.show({ type: 'error', text1: 'Error', text2: result.data?.message || 'Failed to delete the message' });
+      return;
+    }
+    // Show the placeholder right away instead of waiting for the next poll
+    setMessagesData((data: any) => {
+      const messages = { ...(data?.messages || {}) };
+      for (const partnerId of Object.keys(messages)) {
+        messages[partnerId] = messages[partnerId].map((m: any) =>
+          m.id === message.id ? { ...m, message_text: '', is_deleted: 1 } : m
+        );
+      }
+      return { ...data, messages };
+    });
+  };
+
+  // Long press: your own message can be deleted for everyone, a received one can be reported
+  const handleMessageLongPress = (message: any, isFromCurrentUser: boolean) => {
+    if (!message?.id) return;
+
+    if (isFromCurrentUser) {
+      if (message.is_deleted) return;
+      Alert.alert('Delete for everyone?', 'The message will be replaced with "Message deleted" for both of you.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => deleteForEveryone(message) },
+      ]);
+      return;
+    }
+
+    // Deleted messages can still be reported: moderators see the original text
     const user = getActualUser() || selectedChatUser;
-    if (!user?.id || !message?.id) return;
-    Alert.alert('Report this message?', message.message_text || '', [
+    if (!user?.id) return;
+    Alert.alert('Report this message?', message.is_deleted ? 'Deleted message' : message.message_text || '', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Report', style: 'destructive', onPress: () => reportMessage({ id: user.id, name: user.name }, message.id) },
     ]);
@@ -600,14 +632,14 @@ export default function MessagesModal({
                                   styles.chatMessage,
                                   isFromCurrentUser ? styles.chatMessageSent : styles.chatMessageReceived
                                 ]}
-                                // Received messages can be reported with a long press
-                                onLongPress={isFromCurrentUser ? undefined : () => handleMessageLongPress(message)}
+                                onLongPress={() => handleMessageLongPress(message, isFromCurrentUser)}
                               >
                                 <Text style={[
                                   styles.chatMessageText,
-                                  isFromCurrentUser ? styles.chatMessageTextSent : styles.chatMessageTextReceived
+                                  isFromCurrentUser ? styles.chatMessageTextSent : styles.chatMessageTextReceived,
+                                  message.is_deleted ? styles.chatMessageTextDeleted : null,
                                 ]}>
-                                  {message.message_text || ''}
+                                  {message.is_deleted ? '🚫 Message deleted' : message.message_text || ''}
                                 </Text>
                                 <Text style={[
                                   styles.chatMessageTime,
@@ -936,6 +968,10 @@ const styles = StyleSheet.create({
   },
   chatMessageTextReceived: {
     color: '#333',
+  },
+  chatMessageTextDeleted: {
+    fontStyle: 'italic',
+    opacity: 0.75,
   },
   chatMessageTime: {
     fontSize: 11,
