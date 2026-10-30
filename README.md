@@ -26,6 +26,22 @@ Everyday development runs on a **development build** of the app (not Expo Go). T
    - `Shift + i` lets you pick a specific simulator model.
    - For your own marker to appear on the map, set a location in the simulator menu: **Features → Location → Custom Location…** (or **Apple**).
 
+### `expo start` + `i` vs `expo run:ios`
+
+These two do different things — don't use `run:ios` every day:
+
+| Command | What it does | How long |
+|---|---|---|
+| `npx expo start --dev-client`, then `i` | Starts the dev server; `i` **opens the already installed** app in the simulator | Seconds |
+| `npx expo run:ios` | **Builds** the app with Xcode, installs it in the simulator, launches it and starts the dev server | Slow: 10–20 min the first time on an Intel Mac, faster afterwards |
+
+- **Every day**: `npx expo start --dev-client`, then `i` for the simulator and the PeopleMeet icon on the iPhone.
+- **Only when a rebuild is needed** (see [below](#when-a-rebuild-is-needed)): `npx expo run:ios` (simulator) / `npx expo run:ios --device` (iPhone). Afterwards go back to `start` + `i`.
+- `i` only works if the app is already installed in the simulator — otherwise it says *"No development build … is installed"* and you need `npx expo run:ios` once.
+- Keep the simulator open between sessions: a cold boot of the iOS 26 simulator takes 30–60 s on an Intel Mac.
+
+> Why it used to be faster: earlier the simulator ran **Expo Go**, a prebuilt app that only downloads the JS code. Now the simulator runs **our own development build**, which Xcode has to compile from source (React Native, maps, Reanimated, …) — but only when a rebuild is needed.
+
 Useful keys in the dev server terminal:
 
 | Key | Action |

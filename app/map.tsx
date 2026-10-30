@@ -5,6 +5,7 @@ import { startMessagesInterval, setMessagesCallback } from '@/services/messagesI
 import { startLocationTracking, stopLocationTracking, setLocationCallback } from '@/services/locationTracking';
 import { playMessageSound } from '@/services/soundService';
 import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
 import { ActivityIndicator, AppState, Pressable, View, Text, Modal, TouchableWithoutFeedback, ScrollView, Platform, StyleProp, ImageStyle } from 'react-native';
@@ -825,6 +826,17 @@ export default function MapScreen() {
     }
   };
 
+  // Moves the map back to the current user's position
+  const handleCenterOnMe = () => {
+    if (userLat === null || userLng === null) return;
+    mapViewRef.current?.animateToRegion({
+      latitude: userLat,
+      longitude: userLng,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    }, 500);
+  };
+
   if (loading) {
     return (
         <View style={mapStyles.loadingContainer}>
@@ -961,6 +973,22 @@ export default function MapScreen() {
                   );
                 })}
               </MapView>
+          ) : null}
+
+          {/* Button that moves the map back to the current user */}
+          {userLat !== null && userLng !== null ? (
+              <Pressable
+                  style={({ pressed }) => [
+                    mapStyles.centerOnMeButton,
+                    { bottom: insets.bottom + 24 },
+                    pressed && mapStyles.centerOnMeButtonPressed,
+                  ]}
+                  onPress={handleCenterOnMe}
+                  hitSlop={8}
+                  accessibilityLabel="Show my location"
+              >
+                <Ionicons name="locate" size={24} color="#4ECDC4" />
+              </Pressable>
           ) : (
               <View style={mapStyles.emptyContent}>
                 <Text style={mapStyles.emptyText}>Location unavailable</Text>
