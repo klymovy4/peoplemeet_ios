@@ -219,6 +219,49 @@ eas env:list --environment preview
 
 ---
 
+## Production server (backend + website)
+
+The API and the website run on AWS (Ubuntu, `51.20.82.117`) behind Cloudflare and nginx, from the
+[`peoplemeetAWS`](https://github.com/klymovy4/peoplemeetAWS) repo (`backend/index.js` = API, `src/` = website).
+
+**Connect:**
+
+```bash
+ssh -i ~/Documents/PeopleMeetAWS/peoplemeet2.pem ubuntu@51.20.82.117
+```
+
+Optional shortcut (once, on the Mac) so that `ssh peoplemeet` is enough:
+
+```bash
+cat >> ~/.ssh/config <<'CFG'
+
+Host peoplemeet
+  HostName 51.20.82.117
+  User ubuntu
+  IdentityFile ~/Documents/PeopleMeetAWS/peoplemeet2.pem
+CFG
+```
+
+**Deploy** (push from the Mac first):
+
+| What changed | On the server |
+|---|---|
+| API (`backend/index.js`) | `cd ~/peoplemeetAWS && git pull && sudo systemctl restart peoplemeet` |
+| Website (`src/...`) | `cd ~/peoplemeetAWS && git pull && npm run build` |
+| Not sure | `cd ~/peoplemeetAWS && git pull && npm run build && sudo systemctl restart peoplemeet` |
+
+**Useful:**
+
+```bash
+sudo systemctl status peoplemeet                   # is the API running
+sudo journalctl -u peoplemeet -n 30 --no-pager     # recent API logs
+cp /home/ubuntu/db/peoplemeet.db ~/peoplemeet-$(date +%F).db.bak   # back up the database
+```
+
+- The service is called `peoplemeet` (not `bun-service`), the database is `/home/ubuntu/db/peoplemeet.db`.
+- Server settings live in `backend/.env` (`SENDGRID_API_KEY`, `MAIL_FROM`, optional `REPORTS_EMAIL`).
+- Emails are sent from `noreply@peoplemeet.com.ua` (domain authenticated in SendGrid, DNS records in Cloudflare).
+
 ## EAS builds and store release
 
 Requires `npm install -g eas-cli` and `eas login`. Build profiles are in `eas.json`:
