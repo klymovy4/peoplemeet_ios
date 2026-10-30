@@ -1,6 +1,7 @@
 import { loginUser } from '@/services/api';
 import { saveToken, saveUserData } from '@/services/auth';
 import { startMessagesInterval } from '@/services/messagesInterval';
+import { showBannedAlert } from '@/services/session';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -68,6 +69,8 @@ export default function LoginScreen() {
 
          // Go to the protected screen
          router.replace('/profile');
+      } else if (result.data?.error === 'banned') {
+         showBannedAlert();
       } else {
          Toast.show({
             type: 'error',
