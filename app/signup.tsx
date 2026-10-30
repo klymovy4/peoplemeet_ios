@@ -144,6 +144,7 @@ export default function SignUpScreen() {
             <TextInput
               style={[styles.input, { color: colors.text, borderColor: colors.border }]}
               value={password}
+              maxLength={64}
               onChangeText={handlePasswordChange}
               placeholder=""
               secureTextEntry
@@ -158,6 +159,7 @@ export default function SignUpScreen() {
             <TextInput
               style={[styles.input, { color: colors.text, borderColor: colors.border }]}
               value={passwordConfirmation}
+              maxLength={64}
               onChangeText={handlePasswordConfirmationChange}
               placeholder=""
               secureTextEntry

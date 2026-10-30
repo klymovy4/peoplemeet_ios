@@ -79,7 +79,7 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     // Location is not tracked in the background; on return the server may have already
-    // set the user offline (no requests for 5 minutes), so re-check the status
+    // set the user offline (no requests for 3 minutes), so re-check the status
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         refreshOnlineStatus();
@@ -1011,6 +1011,7 @@ export default function ProfileScreen() {
                   <TextInput
                     style={styles.input}
                     value={name}
+                    maxLength={50}
                     onChangeText={setName}
                     placeholder="Enter your name"
                     placeholderTextColor="#999"
@@ -1068,6 +1069,7 @@ export default function ProfileScreen() {
                   <TextInput
                     style={[styles.input, styles.textArea]}
                     value={description}
+                    maxLength={500}
                     onChangeText={setDescription}
                     placeholder="Enter a description (at least 10 characters)"
                     placeholderTextColor="#999"

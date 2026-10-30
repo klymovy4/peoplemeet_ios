@@ -657,6 +657,7 @@ export default function MessagesModal({
                       <TextInput
                         style={styles.chatInput}
                         value={messageText}
+                        maxLength={1000}
                         // Typed emoticons like :) turn into emoji right away
                         onChangeText={(text) => onSetMessageText(replaceEmoticons(text))}
                         placeholder="Type a message..."

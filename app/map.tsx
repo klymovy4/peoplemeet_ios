@@ -156,7 +156,7 @@ export default function MapScreen() {
     setLocationCallback(setLiveCoords);
 
     // Location is not tracked in the background; on return the server may have already
-    // set the user offline (no requests for 5 minutes), so re-check the status
+    // set the user offline (no requests for 3 minutes), so re-check the status
     const appStateSubscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         refreshOnlineStatus();

@@ -207,6 +207,7 @@ export default function RecoverPasswordScreen() {
                 <TextInput
                   style={styles.input}
                   value={newPassword}
+                  maxLength={64}
                   onChangeText={handleNewPasswordChange}
                   placeholder=""
                   secureTextEntry
@@ -226,6 +227,7 @@ export default function RecoverPasswordScreen() {
                   ref={confirmPasswordRef}
                   style={styles.input}
                   value={newConfirmPassword}
+                  maxLength={64}
                   onChangeText={handleNewConfirmPasswordChange}
                   placeholder=""
                   secureTextEntry
