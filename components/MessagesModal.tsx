@@ -1,9 +1,11 @@
-import React, { useRef, useState } from 'react';
-import { View, StyleSheet, Modal, Pressable, Text, ScrollView, TextInput, ActivityIndicator, TouchableWithoutFeedback, Alert } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, StyleSheet, Modal, Pressable, Text, ScrollView, TextInput, ActivityIndicator, TouchableWithoutFeedback, Alert, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { removeConversation } from '@/services/api';
+import { replaceEmoticons } from '@/app/utils/utils';
 
 interface MessagesModalProps {
   visible: boolean;
@@ -74,6 +76,21 @@ export default function MessagesModal({
   // Internal state for deleting a conversation (if not passed from outside)
   const [internalRemovingConversation, setInternalRemovingConversation] = useState(false);
   const isRemovingConversation = removingConversation !== undefined ? removingConversation : internalRemovingConversation;
+
+  // While the keyboard is open the sheet's fixed minHeight would push the header
+  // off-screen, so it is replaced with a height relative to the space above the keyboard
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const messagesSheetStyle = useAnimatedStyle(() => {
     return {
@@ -305,8 +322,15 @@ export default function MessagesModal({
         <TouchableWithoutFeedback onPress={handleClose}>
           <View style={StyleSheet.absoluteFill} />
         </TouchableWithoutFeedback>
-        <View pointerEvents="box-none" style={{ flex: 1, justifyContent: 'flex-end' }}>
-          <Animated.View style={[styles.messagesSheet, messagesSheetStyle]} pointerEvents="auto">
+        <KeyboardAvoidingView
+          pointerEvents="box-none"
+          style={{ flex: 1, justifyContent: 'flex-end' }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <Animated.View
+            style={[styles.messagesSheet, keyboardVisible && styles.messagesSheetKeyboard, messagesSheetStyle]}
+            pointerEvents="auto"
+          >
             <View style={styles.messagesSheetInner}>
               <View style={styles.messagesHeader}>
                 {selectedChatUser ? (
@@ -511,6 +535,10 @@ export default function MessagesModal({
                       bounces={true}
                       alwaysBounceVertical={false}
                       keyboardShouldPersistTaps="handled"
+                      // Swipe down on the messages to hide the keyboard
+                      keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                      // The list shrinks when the keyboard opens - keep the latest message visible
+                      onLayout={() => scrollViewRef.current?.scrollToEnd({ animated: false })}
                     >
                       {(() => {
                         const userId = Object.keys(messagesUsers).find(id => {
@@ -554,21 +582,29 @@ export default function MessagesModal({
                       <TextInput
                         style={styles.chatInput}
                         value={messageText}
-                        onChangeText={onSetMessageText}
+                        // Typed emoticons like :) turn into emoji right away
+                        onChangeText={(text) => onSetMessageText(replaceEmoticons(text))}
                         placeholder="Type a message..."
                         placeholderTextColor="#999"
+                        // Return inserts a new line; messages are sent with the button
                         multiline
-                        onSubmitEditing={onSendMessage}
                       />
                       <Pressable
-                        style={[styles.chatSendButton, (!messageText.trim() || sendingMessage) && styles.chatSendButtonDisabled]}
+                        style={({ pressed }) => [
+                          styles.chatSendButton,
+                          !messageText.trim() && styles.chatSendButtonDisabled,
+                          (pressed || sendingMessage) && styles.chatSendButtonPressed,
+                        ]}
                         onPress={onSendMessage}
+                        // Always visible, but inactive until some text is typed
                         disabled={!messageText.trim() || sendingMessage}
+                        hitSlop={8}
+                        accessibilityLabel="Send message"
                       >
                         {sendingMessage ? (
                           <ActivityIndicator size="small" color="#fff" />
                         ) : (
-                          <Text style={styles.chatSendButtonText}>Send</Text>
+                          <Ionicons name="send" size={18} color="#fff" style={styles.chatSendIcon} />
                         )}
                       </Pressable>
                     </View>
@@ -661,7 +697,7 @@ export default function MessagesModal({
               )}
             </View>
           </Animated.View>
-        </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -680,6 +716,10 @@ const styles = StyleSheet.create({
     maxHeight: '90%',
     minHeight: 600,
     width: '100%',
+  },
+  messagesSheetKeyboard: {
+    minHeight: 0,
+    height: '90%',
   },
   messagesSheetInner: {
     flex: 1,
@@ -867,7 +907,8 @@ const styles = StyleSheet.create({
   },
   chatInputContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
+    // The send button stays at the bottom while the input grows to several lines
+    alignItems: 'flex-end',
     padding: 12,
     borderTopWidth: 1,
     borderTopColor: '#e0e0e0',
@@ -881,25 +922,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     fontSize: 16,
-    maxHeight: 100,
-    marginRight: 8,
+    maxHeight: 120,
   },
   chatSendButton: {
-    backgroundColor: '#4ECDC4',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    width: 40,
+    height: 40,
     borderRadius: 20,
-    minWidth: 80,
+    marginLeft: 8,
+    backgroundColor: '#4ECDC4',
     alignItems: 'center',
     justifyContent: 'center',
   },
   chatSendButtonDisabled: {
-    opacity: 0.5,
+    backgroundColor: '#c8c8c8',
   },
-  chatSendButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+  chatSendButtonPressed: {
+    opacity: 0.6,
+  },
+  chatSendIcon: {
+    // The paper-plane glyph looks off-center without a small nudge to the right
+    marginLeft: 2,
   },
   userInfoContainer: {
     flex: 1,

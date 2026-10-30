@@ -14,7 +14,7 @@ import { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import MapView from 'react-native-map-clustering';
 import MessagesModal from '@/components/MessagesModal';
 import Toast from 'react-native-toast-message';
-import { getImageUrl, parseCoordinate, getUserMarkerColor, calculateDistance, formatMessageTime } from '@/app/utils/utils';
+import { getImageUrl, parseCoordinate, getUserMarkerColor, calculateDistance, formatMessageTime, replaceEmoticons } from '@/app/utils/utils';
 import { mapStyles } from '@/app/styles/mapStyles';
 
 type AvatarMarkerProps = {
@@ -782,7 +782,7 @@ export default function MapScreen() {
         return;
       }
 
-      const result = await sendMessage(token, selectedChatUser.id, messageText.trim());
+      const result = await sendMessage(token, selectedChatUser.id, replaceEmoticons(messageText, true).trim());
       if (result.status === 'success') {
         setMessageText('');
         // Scroll down after sending

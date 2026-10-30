@@ -108,3 +108,41 @@ export const formatMessageTime = (createdAt: string | null | undefined): string 
     return '';
   }
 };
+
+// Text emoticons that are turned into emoji in chat messages
+const EMOTICONS: Record<string, string> = {
+  ':)': '🙂', ':-)': '🙂',
+  ':(': '🙁', ':-(': '🙁',
+  ';)': '😉', ';-)': '😉',
+  ":'(": '😢',
+  ':*': '😘', ':-*': '😘',
+  ':|': '😐',
+  '<3': '❤️',
+  ':D': '😃', ':-D': '😃',
+  'xD': '😆', 'XD': '😆',
+  ':P': '😛', ':p': '😛', ':-P': '😛', ':-p': '😛',
+  ':O': '😮', ':o': '😮', ':-O': '😮', ':-o': '😮',
+};
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const buildEmoticonRegExp = (emoticons: string[], lookahead: string) =>
+  new RegExp(`(^|\\s)(${emoticons.map(escapeRegExp).join('|')})(?=${lookahead})`, 'g');
+
+const emoticonKeys = Object.keys(EMOTICONS);
+// Ending in a letter (":D", ":P", "xD"), the emoticon may still be the start of a word,
+// so while typing it is replaced only once a space follows it
+const endsWithLetter = (emoticon: string) => /[a-z]$/i.test(emoticon);
+const SAFE_EMOTICONS_RE = buildEmoticonRegExp(emoticonKeys.filter((e) => !endsWithLetter(e)), '\\s|$');
+const LETTER_EMOTICONS_RE = buildEmoticonRegExp(emoticonKeys.filter(endsWithLetter), '\\s');
+const ALL_EMOTICONS_RE = buildEmoticonRegExp(emoticonKeys, '\\s|$');
+
+/**
+ * Replaces standalone text emoticons (":)", "<3", ":D"...) with emoji.
+ * `final` is used when the message is sent: emoticons at the very end are replaced too.
+ */
+export const replaceEmoticons = (text: string, final = false): string => {
+  const toEmoji = (_: string, prefix: string, emoticon: string) => prefix + EMOTICONS[emoticon];
+  if (final) return text.replace(ALL_EMOTICONS_RE, toEmoji);
+  return text.replace(SAFE_EMOTICONS_RE, toEmoji).replace(LETTER_EMOTICONS_RE, toEmoji);
+};

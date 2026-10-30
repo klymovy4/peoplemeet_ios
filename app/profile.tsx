@@ -6,7 +6,7 @@ import { startLocationTracking, stopLocationTracking } from '@/services/location
 import { playMessageSound } from '@/services/soundService';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { formatMessageTime, getImageUrl } from '@/app/utils/utils';
+import { formatMessageTime, getImageUrl, replaceEmoticons } from '@/app/utils/utils';
 import { useEffect, useState, useRef } from 'react';
 import { ActivityIndicator, AppState, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View, TextInput, Platform, Switch } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -775,7 +775,7 @@ export default function ProfileScreen() {
         return;
       }
 
-      const result = await sendMessage(token, selectedChatUser.id, messageText.trim());
+      const result = await sendMessage(token, selectedChatUser.id, replaceEmoticons(messageText, true).trim());
       if (result.status === 'success') {
         setMessageText('');
         // Scroll down after sending
