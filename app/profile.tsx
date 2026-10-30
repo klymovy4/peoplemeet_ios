@@ -19,6 +19,9 @@ import * as Location from 'expo-location';
 import ImageCropModal from '@/components/ImageCropModal';
 import MessagesModal from '@/components/MessagesModal';
 
+// Picked photos are scaled down to this long side before cropping (the avatar is 800x800)
+const MAX_PICKED_IMAGE_SIDE = 1600;
+
 const GENDER_OPTIONS = [
   { value: 'male', label: 'Male', icon: 'male' },
   { value: 'female', label: 'Female', icon: 'female' },
@@ -378,8 +381,20 @@ export default function ProfileScreen() {
 
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
-        setSelectedImageUri(asset.uri);
-        setSelectedImageSize(asset.width && asset.height ? { width: asset.width, height: asset.height } : null);
+        // Re-save the photo once with its EXIF rotation applied (and scaled down). The crop
+        // screen and the crop itself then work on the very same pixels, so a rotated iPhone
+        // photo can't be cropped in a different place than the frame shows
+        const longSide = Math.max(asset.width || 0, asset.height || 0);
+        const normalized = await ImageManipulator.manipulateAsync(
+          asset.uri,
+          longSide > MAX_PICKED_IMAGE_SIDE
+            ? [{ resize: asset.width >= asset.height ? { width: MAX_PICKED_IMAGE_SIDE } : { height: MAX_PICKED_IMAGE_SIDE } }]
+            : [],
+          { compress: 1, format: ImageManipulator.SaveFormat.JPEG }
+        );
+        console.log('Avatar: picked', asset.width, 'x', asset.height, '-> normalized', normalized.width, 'x', normalized.height);
+        setSelectedImageUri(normalized.uri);
+        setSelectedImageSize({ width: normalized.width, height: normalized.height });
         setCropMode(true);
       }
     } catch (error) {
@@ -401,6 +416,7 @@ export default function ProfileScreen() {
       // Create a square crop (use the smaller side for the square)
       const size = Math.min(cropData.width, cropData.height);
       
+      console.log('Avatar: crop', JSON.stringify(cropData));
       const croppedImage = await ImageManipulator.manipulateAsync(
         selectedImageUri,
         [
