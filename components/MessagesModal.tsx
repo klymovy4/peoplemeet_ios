@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { removeConversation } from '@/services/api';
 import { replaceEmoticons } from '@/utils/utils';
+import { useUserModeration } from '@/hooks/use-user-moderation';
 
 interface MessagesModalProps {
   visible: boolean;
@@ -27,6 +28,8 @@ interface MessagesModalProps {
   onSetMessageText: (text: string) => void;
   onSendMessage: () => void;
   onRemoveConversation?: () => void;
+  // Called after the user is blocked or reported, so the screen can hide them right away
+  onUserBlocked?: (userId: number) => void;
   onShowOnMap?: (userId: number) => void;
   getImageUrl: (imageName: string | null | undefined) => string | null;
   getUnreadCountForUser: (userId: string | number) => number;
@@ -61,6 +64,7 @@ export default function MessagesModal({
   onSetMessageText,
   onSendMessage,
   onRemoveConversation,
+  onUserBlocked,
   onShowOnMap,
   getImageUrl,
   getUnreadCountForUser,
@@ -149,6 +153,23 @@ export default function MessagesModal({
     
     // Otherwise fall back to selectedChatUser
     return selectedChatUser;
+  };
+
+  const { openReport, confirmBlock, reportMessage, reportModal } = useUserModeration((userId) => {
+    // Back to the conversations list: this chat is hidden now
+    onSetShowUserInfo(false);
+    onSetSelectedChatUser(null);
+    onUserBlocked?.(userId);
+  });
+
+  // Long press on a received message offers to report it
+  const handleMessageLongPress = (message: any) => {
+    const user = getActualUser() || selectedChatUser;
+    if (!user?.id || !message?.id) return;
+    Alert.alert('Report this message?', message.message_text || '', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Report', style: 'destructive', onPress: () => reportMessage({ id: user.id, name: user.name }, message.id) },
+    ]);
   };
 
   // Generic conversation delete function
@@ -515,6 +536,26 @@ export default function MessagesModal({
                                 </View>
                               );
                             })()}
+
+                            {/* Report / block - always available, even without messages */}
+                            {actualUser?.id ? (
+                              <View style={styles.userInfoModerationContainer}>
+                                <Pressable
+                                  style={[styles.userInfoModerationButton, styles.userInfoReportButton]}
+                                  onPress={() => openReport({ id: actualUser.id, name: actualUser.name })}
+                                >
+                                  <Ionicons name="flag-outline" size={18} color="#FF6B6B" />
+                                  <Text style={styles.userInfoReportButtonText}>Report</Text>
+                                </Pressable>
+                                <Pressable
+                                  style={[styles.userInfoModerationButton, styles.userInfoBlockButton]}
+                                  onPress={() => confirmBlock({ id: actualUser.id, name: actualUser.name })}
+                                >
+                                  <Ionicons name="ban-outline" size={18} color="#666" />
+                                  <Text style={styles.userInfoBlockButtonText}>Block</Text>
+                                </Pressable>
+                              </View>
+                            ) : null}
                           </View>
                         </>
                       );
@@ -553,12 +594,14 @@ export default function MessagesModal({
                           chatMessages.map((message: any, index: number) => {
                             const isFromCurrentUser = message.sender_id === userData?.id;
                             return (
-                              <View
+                              <Pressable
                                 key={message.id || index}
                                 style={[
                                   styles.chatMessage,
                                   isFromCurrentUser ? styles.chatMessageSent : styles.chatMessageReceived
                                 ]}
+                                // Received messages can be reported with a long press
+                                onLongPress={isFromCurrentUser ? undefined : () => handleMessageLongPress(message)}
                               >
                                 <Text style={[
                                   styles.chatMessageText,
@@ -572,7 +615,7 @@ export default function MessagesModal({
                                 ]}>
                                   {formatMessageTime(message.created_at)}
                                 </Text>
-                              </View>
+                              </Pressable>
                             );
                           })
                         );
@@ -699,6 +742,8 @@ export default function MessagesModal({
           </Animated.View>
         </KeyboardAvoidingView>
       </View>
+      {/* Rendered inside this modal so it can be presented on top of it */}
+      {reportModal}
     </Modal>
   );
 }
@@ -1045,6 +1090,37 @@ const styles = StyleSheet.create({
   },
   userInfoDeleteButtonText: {
     color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  userInfoModerationContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+  },
+  userInfoModerationButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  userInfoReportButton: {
+    borderColor: '#FF6B6B',
+  },
+  userInfoReportButtonText: {
+    color: '#FF6B6B',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  userInfoBlockButton: {
+    borderColor: '#ccc',
+  },
+  userInfoBlockButtonText: {
+    color: '#666',
     fontSize: 16,
     fontWeight: '600',
   },

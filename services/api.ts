@@ -8,9 +8,9 @@ export type ApiResult =
 
 // Handler for an expired/invalid session (401). Registered at app startup
 // (see services/session.ts) so the network layer does not depend on the router.
-let onUnauthorized: (() => void) | null = null;
+let onUnauthorized: ((reason: 'expired' | 'banned') => void) | null = null;
 
-export const setUnauthorizedHandler = (handler: (() => void) | null) => {
+export const setUnauthorizedHandler = (handler: ((reason: 'expired' | 'banned') => void) | null) => {
   onUnauthorized = handler;
 };
 
@@ -33,11 +33,16 @@ async function apiPost(path: string, body: unknown): Promise<{ ok: boolean; data
     body: JSON.stringify(body),
   });
 
+  const data = await response.json();
+
   if (response.status === 401 && bodyHasToken(body)) {
-    onUnauthorized?.();
+    onUnauthorized?.('expired');
+  }
+  // A banned account is logged out (the login screen shows its own error for 403 "banned")
+  if (response.status === 403 && data?.error === 'banned' && bodyHasToken(body)) {
+    onUnauthorized?.('banned');
   }
 
-  const data = await response.json();
   return { ok: response.ok, data };
 }
 
@@ -86,6 +91,34 @@ export const sendMessage = (token: string, receiver_id: number, message_text: st
 
 export const removeConversation = (token: string, chat_partner_id: number) =>
   request('/remove_conversation', { token, chat_partner_id });
+
+export const REPORT_REASONS = [
+  { value: 'spam', label: 'Spam' },
+  { value: 'harassment', label: 'Harassment or insults' },
+  { value: 'inappropriate_photo', label: 'Inappropriate photo' },
+  { value: 'fake_profile', label: 'Fake profile' },
+  { value: 'underage', label: 'Under 18' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+export type ReportReason = (typeof REPORT_REASONS)[number]['value'];
+
+// Blocking hides both users from each other on the map and in chats
+export const blockUser = (token: string, user_id: number) =>
+  request('/block_user', { token, user_id });
+
+export const unblockUser = (token: string, user_id: number) =>
+  request('/unblock_user', { token, user_id });
+
+export const getBlockedUsers = (token: string) => request('/get_blocked_users', { token });
+
+// Reporting also blocks the user on the server
+export const reportUser = (
+  token: string,
+  user_id: number,
+  reason: ReportReason,
+  options: { message_id?: number; comment?: string } = {},
+) => request('/report_user', { token, user_id, reason, ...options });
 
 /**
  * Avatar upload. Uses multipart/form-data, so it does not go through apiPost:

@@ -14,6 +14,7 @@ import { useSharedValue, withSpring } from 'react-native-reanimated';
 import { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import MapView from 'react-native-map-clustering';
 import MessagesModal from '@/components/MessagesModal';
+import { useUserModeration } from '@/hooks/use-user-moderation';
 import Toast from 'react-native-toast-message';
 import { getImageUrl, parseCoordinate, getUserMarkerColor, calculateDistance, formatMessageTime, replaceEmoticons } from '@/utils/utils';
 import { mapStyles } from '@/styles/mapStyles';
@@ -617,6 +618,27 @@ export default function MapScreen() {
     setSelectedUser(null);
   };
 
+  // Hide a blocked/reported user right away instead of waiting for the next poll
+  const removeUserLocally = (removedId: number) => {
+    const isRemoved = (user: any) => String(user?.id ?? user?.user_id) === String(removedId);
+    setSelectedUser((current: any) => (isRemoved(current) ? null : current));
+    setOnlineUsers((users) => users.filter((user) => !isRemoved(user)));
+    setMessagesUsers((users: any) => {
+      const { [removedId]: _removed, ...rest } = users || {};
+      return rest;
+    });
+    setMessagesData((data: any) => {
+      const messages = { ...(data?.messages || {}) };
+      delete messages[removedId];
+      return { ...data, messages };
+    });
+    if (selectedChatUser && isRemoved(selectedChatUser)) {
+      setSelectedChatUser(null);
+    }
+  };
+
+  const { openMenu: openUserMenu, reportModal } = useUserModeration(removeUserLocally);
+
   // Update selectedUser with up-to-date data from onlineUsers and messagesUsers when they change
   useEffect(() => {
     if (selectedUser) {
@@ -790,6 +812,8 @@ export default function MapScreen() {
         setTimeout(() => {
           scrollViewRef.current?.scrollToEnd({ animated: true });
         }, 100);
+      } else if (result.data?.error === 'blocked') {
+        Toast.show({ type: 'error', text1: "Can't send", text2: "You can't message this user" });
       }
     } catch (error) {
       console.error('Error sending message:', error);
@@ -1021,6 +1045,18 @@ export default function MapScreen() {
                     <Text style={mapStyles.userCardCloseText}>✕</Text>
                   </Pressable>
 
+                  {/* Report / block menu - not for your own card */}
+                  {selectedUser && selectedUser.id !== userData?.id ? (
+                    <Pressable
+                      style={mapStyles.userCardMenuButton}
+                      onPress={() => openUserMenu({ id: selectedUser.id || selectedUser.user_id, name: selectedUser.name })}
+                      hitSlop={8}
+                      accessibilityLabel="Report or block"
+                    >
+                      <Ionicons name="ellipsis-horizontal" size={18} color="#666" />
+                    </Pressable>
+                  ) : null}
+
                   {/* User photo */}
                   <View style={mapStyles.userCardImageContainer}>
                     {selectedUser?.image ? (
@@ -1089,11 +1125,14 @@ export default function MapScreen() {
               </TouchableWithoutFeedback>
             </View>
           </TouchableWithoutFeedback>
+          {/* Rendered inside the card modal so it can be presented on top of it */}
+          {reportModal}
         </Modal>
 
         {/* Messages panel at the bottom */}
         <MessagesModal
           visible={messagesVisible}
+          onUserBlocked={removeUserLocally}
           slideAnim={slideAnim}
           messagesUsers={messagesUsers}
           messagesData={messagesData}

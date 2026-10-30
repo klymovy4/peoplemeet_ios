@@ -315,6 +315,21 @@ export default function ProfileScreen() {
     setIsOnline(onlineStatus);
   };
 
+  // Hide a blocked/reported user right away instead of waiting for the next poll
+  const removeUserLocally = (removedId: number) => {
+    const isRemoved = (user: any) => String(user?.id ?? user?.user_id) === String(removedId);
+    setOnlineUsers((users) => users.filter((user) => !isRemoved(user)));
+    setMessagesUsers((users: any) => {
+      const { [removedId]: _removed, ...rest } = users || {};
+      return rest;
+    });
+    setMessagesData((data: any) => {
+      const messages = { ...(data?.messages || {}) };
+      delete messages[removedId];
+      return { ...data, messages };
+    });
+  };
+
   const handleLogout = async () => {
     try {
       // Make sure online users polling and location tracking are turned off
@@ -806,6 +821,8 @@ export default function ProfileScreen() {
         setTimeout(() => {
           scrollViewRef.current?.scrollToEnd({ animated: true });
         }, 100);
+      } else if (result.data?.error === 'blocked') {
+        Toast.show({ type: 'error', text1: "Can't send", text2: "You can't message this user" });
       }
     } catch (error) {
       console.error('Error sending message:', error);
@@ -1099,6 +1116,10 @@ export default function ProfileScreen() {
           {/*  </Pressable>*/}
           {/*)}*/}
 
+          <Pressable style={styles.blockedUsersButton} onPress={() => router.push('/blocked-users')}>
+            <Text style={styles.blockedUsersButtonText}>Blocked users</Text>
+          </Pressable>
+
           <Pressable style={styles.logoutButton} onPress={handleLogout}>
             <Text style={styles.logoutButtonText}>Logout</Text>
           </Pressable>
@@ -1120,6 +1141,7 @@ export default function ProfileScreen() {
       {/* Messages panel at the bottom */}
       <MessagesModal
         visible={messagesVisible}
+        onUserBlocked={removeUserLocally}
         slideAnim={slideAnim}
         messagesUsers={messagesUsers}
         messagesData={messagesData}
@@ -1422,6 +1444,19 @@ const styles = StyleSheet.create({
   },
   mapButtonText: {
     color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  blockedUsersButton: {
+    borderRadius: 8,
+    alignItems: 'center',
+    padding: 15,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    marginTop: 10,
+  },
+  blockedUsersButtonText: {
+    color: '#666',
     fontSize: 16,
     fontWeight: '600',
   },

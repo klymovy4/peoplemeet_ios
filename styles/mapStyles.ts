@@ -238,6 +238,18 @@ export const mapStyles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 10,
   },
+  userCardMenuButton: {
+    position: 'absolute',
+    top: 15,
+    left: 15,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
   userCardCloseText: {
     fontSize: 18,
     color: '#666',
