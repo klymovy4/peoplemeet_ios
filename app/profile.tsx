@@ -593,10 +593,8 @@ export default function ProfileScreen() {
         }
       } else {
         // Check that all required data is present before going online:
-        // the same rules as for saving, plus photo and thoughts
-        const validationError = !userData?.image
-          ? 'A profile photo is required'
-          : getProfileError() ?? (thoughts.trim().length === 0 ? 'Please share your thoughts' : null);
+        // the same rules as for saving, plus a photo (thoughts are optional)
+        const validationError = !userData?.image ? 'A profile photo is required' : getProfileError();
 
         if (validationError) {
           Toast.show({
