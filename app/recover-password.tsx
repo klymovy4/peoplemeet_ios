@@ -19,8 +19,8 @@ export default function RecoverPasswordScreen() {
   };
 
   const handleCodeChange = (text: string) => {
-    // Allow digits only, up to 4 characters
-    const numericText = text.replace(/[^0-9]/g, '').slice(0, 4);
+    // Allow digits only, up to 6 characters
+    const numericText = text.replace(/[^0-9]/g, '').slice(0, 6);
     setFormCode(numericText);
   };
 
@@ -32,9 +32,9 @@ export default function RecoverPasswordScreen() {
     setNewConfirmPassword(text);
   };
 
-  // Automatically check the code once 4 digits are entered
+  // Automatically check the code once 6 digits are entered
   useEffect(() => {
-    if (formCode.length !== 4) return;
+    if (formCode.length !== 6) return;
 
     const sendCode = async () => {
       const response = await checkRecoveryCode(email, formCode);
@@ -174,7 +174,7 @@ export default function RecoverPasswordScreen() {
                 onChangeText={handleCodeChange}
                 placeholder=""
                 keyboardType="number-pad"
-                maxLength={4}
+                maxLength={6}
               />
             </View>
           )}
