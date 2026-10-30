@@ -61,11 +61,14 @@ function AvatarMarker({ coordinate, identifier, onPress, imageUri, avatarStyle, 
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
 
   // Without a photo there is nothing to wait for: stop tracking after the first render
+  // Markers keep a stable key, so a new photo or thoughts update the existing marker instead of
+  // re-creating it: redraw for a moment, then stop. With a photo, onDisplay usually stops it
+  // earlier; the timeout covers cached photos and thoughts-only changes
   useEffect(() => {
-    if (imageUri) return;
-    const timer = setTimeout(() => setTracksViewChanges(false), 300);
+    setTracksViewChanges(true);
+    const timer = setTimeout(() => setTracksViewChanges(false), imageUri ? 1500 : 300);
     return () => clearTimeout(timer);
-  }, [imageUri]);
+  }, [imageUri, thoughts]);
 
   const avatar = imageUri ? (
     <Image
@@ -939,7 +942,8 @@ export default function MapScreen() {
                 {/* Current user's marker - uses up-to-date data from online_users */}
                 {currentUserData && userLat !== null && userLng !== null && (
                   <AvatarMarker
-                      key={`self-${currentUserData?.thoughts || ''}-${currentUserData?.image || ''}-${currentUserData?.id || ''}`}
+                      // Stable key: re-creating map markers crashes react-native-maps on the new architecture
+                      key="self"
                       coordinate={{
                         latitude: userLat,
                         longitude: userLng,
@@ -954,39 +958,29 @@ export default function MapScreen() {
 
                 {/* Markers of other online users */}
                 {onlineUsers
-                  .filter((user: any) => {
-                    // Keep only users with valid coordinates
-                    const lat = parseCoordinate(user.lat);
-                    const lng = parseCoordinate(user.lng);
-                    return lat !== null && lng !== null && user.id !== undefined;
-                  })
-                  .map((user: any) => {
-                  const userLat = parseCoordinate(user.lat);
-                  const userLng = parseCoordinate(user.lng);
-                  const userId = String(user.id || user.user_id || `user-${user.lat}-${user.lng}`);
-                  
-                  // Extra coordinate validity check
-                  if (userLat === null || userLng === null || !userId) {
-                    return null;
-                  }
-                  
-                  // Use up-to-date data from onlineUsers (refreshed every 3 seconds)
-                  // onlineUsers holds the freshest data (thoughts, image, name, age, etc.)
-                  const actualUser = user; // onlineUsers already holds up-to-date data
-                  
+                  // Parse coordinates once and drop invalid users before rendering: the children
+                  // list must not contain nulls, or react-native-maps can insert markers at a wrong index
+                  .map((user: any) => ({
+                    user,
+                    userId: user.id ?? user.user_id,
+                    userLat: parseCoordinate(user.lat),
+                    userLng: parseCoordinate(user.lng),
+                  }))
+                  .filter(({ userId, userLat, userLng }) => userId !== undefined && userLat !== null && userLng !== null)
+                  .map(({ user: actualUser, userId, userLat, userLng }) => {
+                  // onlineUsers holds the freshest data (thoughts, image, name, age, etc.), refreshed every 3 seconds
+
                   // Generate a unique marker color based on user data
                   const markerColor = getUserMarkerColor(actualUser);
-                  
-                  // Build a key that includes mutable fields so the marker re-renders when they change
-                  const markerKey = `${userId}-${actualUser.thoughts || ''}-${actualUser.image || ''}-${actualUser.name || ''}`;
-                  
+
                   return (
                       <AvatarMarker
-                          key={markerKey}
+                          // Stable key: changed thoughts/photo update the marker instead of re-creating it
+                          key={`user-${userId}`}
                           identifier={String(userId)}
                           coordinate={{
-                            latitude: userLat,
-                            longitude: userLng,
+                            latitude: userLat as number,
+                            longitude: userLng as number,
                           }}
                           onPress={() => handleMarkerPress(actualUser)}
                           imageUri={getImageUrl(actualUser.image)}
