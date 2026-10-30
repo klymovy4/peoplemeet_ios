@@ -244,8 +244,10 @@ export const mapStyles = StyleSheet.create({
     fontWeight: 'bold',
   },
   userCardImageContainer: {
+    // Square like the avatar itself: a fixed 300pt height on a wider card made
+    // contentFit="cover" cut off the top and bottom of the photo (eyes included)
     width: '100%',
-    height: 300,
+    aspectRatio: 1,
     backgroundColor: '#f0f0f0',
   },
   userCardImage: {
@@ -266,6 +268,8 @@ export const mapStyles = StyleSheet.create({
   userCardContent: {
     padding: 20,
     maxHeight: 300,
+    // On small screens the info scrolls instead of being cut off below the square photo
+    flexShrink: 1,
   },
   userCardName: {
     fontSize: 24,
