@@ -1,7 +1,7 @@
 import { changePassword, checkRecoveryCode, getRecoverCode } from '@/services/api';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Toast from 'react-native-toast-message';
 
 export default function RecoverPasswordScreen() {
@@ -13,6 +13,7 @@ export default function RecoverPasswordScreen() {
   const [isRestoreCode, setIsRestoreCode] = useState(false);
   const [isStartChangePassword, setIsStartChangePassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const confirmPasswordRef = useRef<TextInput>(null);
 
   const handleEmailChange = (text: string) => {
     setEmail(text);
@@ -62,6 +63,9 @@ export default function RecoverPasswordScreen() {
   }, [formCode, email]);
 
   const handleSendCode = async () => {
+    // The Return key can trigger this while a request is already in flight
+    if (loading) return;
+
     if (!email) {
       Toast.show({
         type: 'error',
@@ -93,6 +97,8 @@ export default function RecoverPasswordScreen() {
   };
 
   const handleResetPassword = async () => {
+    if (loading) return;
+
     if (newPassword !== newConfirmPassword) {
       Toast.show({
         type: 'error',
@@ -142,8 +148,11 @@ export default function RecoverPasswordScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.content}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {/* Title placeholder */}
         <Text style={styles.title}>People Meet</Text>
 
@@ -160,7 +169,14 @@ export default function RecoverPasswordScreen() {
               placeholder=""
               autoCapitalize="none"
               keyboardType="email-address"
+              textContentType="emailAddress"
+              autoComplete="email"
               editable={!isStartChangePassword}
+              // Return sends the code
+              returnKeyType="send"
+              onSubmitEditing={() => {
+                if (!isRestoreCode) handleSendCode();
+              }}
             />
           </View>
 
@@ -175,6 +191,10 @@ export default function RecoverPasswordScreen() {
                 placeholder=""
                 keyboardType="number-pad"
                 maxLength={6}
+                // iOS offers the code from the email above the keyboard
+                textContentType="oneTimeCode"
+                autoComplete="one-time-code"
+                autoFocus
               />
             </View>
           )}
@@ -190,17 +210,30 @@ export default function RecoverPasswordScreen() {
                   onChangeText={handleNewPasswordChange}
                   placeholder=""
                   secureTextEntry
+                  textContentType="newPassword"
+                  autoComplete="new-password"
+                  autoFocus
+                  // Return moves to the confirmation field
+                  returnKeyType="next"
+                  submitBehavior="submit"
+                  onSubmitEditing={() => confirmPasswordRef.current?.focus()}
                 />
               </View>
 
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>New password confirmation</Text>
                 <TextInput
+                  ref={confirmPasswordRef}
                   style={styles.input}
                   value={newConfirmPassword}
                   onChangeText={handleNewConfirmPasswordChange}
                   placeholder=""
                   secureTextEntry
+                  textContentType="newPassword"
+                  autoComplete="new-password"
+                  // Return resets the password
+                  returnKeyType="done"
+                  onSubmitEditing={handleResetPassword}
                 />
               </View>
             </>
@@ -244,8 +277,8 @@ export default function RecoverPasswordScreen() {
             <Text style={styles.logInLink}>Log in</Text>
           </Pressable>
         </View>
-      </View>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -255,7 +288,7 @@ const styles = StyleSheet.create({
     // TODO: Add background styling
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     // TODO: Add padding/margin styling
