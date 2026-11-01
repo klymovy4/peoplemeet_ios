@@ -3,7 +3,7 @@ import { getSelf, readMessages, sendMessage, getUsersOnline } from '@/services/a
 import { enableUsersOnlinePolling, disableUsersOnlinePolling, setUsersOnlineCallback } from '@/services/usersOnlineInterval';
 import { startMessagesInterval, setMessagesCallback } from '@/services/messagesInterval';
 import { startLocationTracking, stopLocationTracking, setLocationCallback } from '@/services/locationTracking';
-import { playMessageSound } from '@/services/soundService';
+import { playMessageSound, preloadMessageSound } from '@/services/soundService';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -69,7 +69,6 @@ const MARKER_ANCHOR = Platform.OS === 'android' ? { anchor: { x: 0.5, y: 0.5 } }
 function AvatarMarker({ coordinate, identifier, onPress, imageUri, avatarStyle, avatarSize, thoughts }: AvatarMarkerProps) {
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
 
-  // Without a photo there is nothing to wait for: stop tracking after the first render
   // Markers keep a stable key, so a new photo or thoughts update the existing marker instead of
   // re-creating it: redraw for a moment, then stop. With a photo, onDisplay usually stops it
   // earlier; the timeout covers cached photos and thoughts-only changes
@@ -121,6 +120,12 @@ function AvatarMarker({ coordinate, identifier, onPress, imageUri, avatarStyle, 
 
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
+
+  // Load the new-message sound in advance
+  useEffect(() => {
+    preloadMessageSound();
+  }, []);
+
   const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [messagesVisible, setMessagesVisible] = useState(false);

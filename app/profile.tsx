@@ -3,7 +3,7 @@ import { getSelf, uploadAvatar, editProfile, getOnline, readMessages, sendMessag
 import { enableUsersOnlinePolling, disableUsersOnlinePolling, setUsersOnlineCallback } from '@/services/usersOnlineInterval';
 import { startMessagesInterval, stopMessagesInterval, setMessagesCallback } from '@/services/messagesInterval';
 import { startLocationTracking, stopLocationTracking } from '@/services/locationTracking';
-import { playMessageSound } from '@/services/soundService';
+import { playMessageSound, preloadMessageSound } from '@/services/soundService';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -66,6 +66,11 @@ export default function ProfileScreen() {
   const userIdRef = useRef<number | null>(null);
   
 
+
+  // Load the new-message sound in advance
+  useEffect(() => {
+    preloadMessageSound();
+  }, []);
 
   useEffect(() => {
     checkAuth();

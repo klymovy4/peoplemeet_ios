@@ -1,24 +1,37 @@
 import type { AudioPlayer } from 'expo-audio';
 
-// One player for the "new message" sound, created on first use and reused afterwards
+// One player for the "new message" sound, created once and reused afterwards
 let player: AudioPlayer | null = null;
 let audioUnavailable = false;
 
-export const playMessageSound = () => {
-  if (audioUnavailable) return;
+const getPlayer = (): AudioPlayer | null => {
+  if (player || audioUnavailable) return player;
   try {
-    if (!player) {
-      // Loaded lazily: if the installed build has no native audio module (e.g. not rebuilt yet),
-      // only the sound is missing instead of the screens that import this file failing to load
-      const { createAudioPlayer } = require('expo-audio') as typeof import('expo-audio');
-      player = createAudioPlayer(require('../assets/message2.mp3'));
-      player.volume = 1.0;
-    }
-    // Restart from the beginning if the previous sound is still playing
-    player.seekTo(0);
-    player.play();
+    // Loaded lazily: if the installed build has no native audio module (e.g. not rebuilt yet),
+    // only the sound is missing instead of the screens that import this file failing to load
+    const { createAudioPlayer } = require('expo-audio') as typeof import('expo-audio');
+    player = createAudioPlayer(require('../assets/message2.mp3'));
+    player.volume = 1.0;
   } catch (error) {
     audioUnavailable = true;
     console.error('🔇 Message sound unavailable:', error);
+  }
+  return player;
+};
+
+/** Loads the sound file in advance, so the first new message isn't silent while it loads */
+export const preloadMessageSound = () => {
+  getPlayer();
+};
+
+export const playMessageSound = () => {
+  const current = getPlayer();
+  if (!current) return;
+  try {
+    // Restart from the beginning if the previous sound is still playing
+    current.seekTo(0);
+    current.play();
+  } catch (error) {
+    console.error('🔇 Error playing message sound:', error);
   }
 };
