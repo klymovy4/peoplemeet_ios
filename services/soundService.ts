@@ -1,33 +1,17 @@
-import { Audio } from 'expo-av';
+import { AudioPlayer, createAudioPlayer } from 'expo-audio';
 
-let soundObject: Audio.Sound | null = null;
+// One player for the "new message" sound, created on first use and reused afterwards
+let player: AudioPlayer | null = null;
 
-export const playMessageSound = async () => {
+export const playMessageSound = () => {
   try {
-    // Stop the previous sound if it is playing
-    if (soundObject) {
-      await soundObject.unloadAsync();
-      soundObject = null;
+    if (!player) {
+      player = createAudioPlayer(require('../assets/message2.mp3'));
+      player.volume = 1.0;
     }
-
-    // Use the file path in assets
-    const soundUri = require('../assets/message2.mp3');
-
-    // Create a new sound object
-    const { sound } = await Audio.Sound.createAsync(
-      soundUri,
-      { shouldPlay: true, volume: 1.0 }
-    );
-
-    soundObject = sound;
-
-    // Unload the sound after playback finishes
-    sound.setOnPlaybackStatusUpdate((status) => {
-      if (status.isLoaded && status.didJustFinish) {
-        sound.unloadAsync();
-        soundObject = null;
-      }
-    });
+    // Restart from the beginning if the previous sound is still playing
+    player.seekTo(0);
+    player.play();
   } catch (error) {
     console.error('🔇 Error playing message sound:', error);
   }
