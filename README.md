@@ -255,7 +255,23 @@ CFG
 ```bash
 sudo systemctl status peoplemeet                   # is the API running
 sudo journalctl -u peoplemeet -n 30 --no-pager     # recent API logs
-cp /home/ubuntu/db/peoplemeet.db ~/peoplemeet-$(date +%F).db.bak   # back up the database
+```
+
+**Database backups:** `backend/backup-db.js` runs every night at 03:15 (UTC) by cron and keeps the
+last 14 copies in `/home/ubuntu/backups` (log: `/home/ubuntu/backups/backup.log`). It uses
+`VACUUM INTO`, so the copy is consistent even while the API is writing — don't back up with a plain `cp`
+(the database runs in WAL mode). Install the cron job once:
+
+```bash
+mkdir -p ~/backups
+(crontab -l 2>/dev/null; echo "15 3 * * * /home/ubuntu/.bun/bin/bun /home/ubuntu/peoplemeetAWS/backend/backup-db.js >> /home/ubuntu/backups/backup.log 2>&1") | crontab -
+```
+
+Backups on the same server don't survive a lost server — copy them to the Mac from time to time:
+
+```bash
+mkdir -p ~/Documents/PeopleMeetAWS/backups
+scp -i ~/Documents/PeopleMeetAWS/peoplemeet2.pem 'ubuntu@51.20.82.117:backups/*.db' ~/Documents/PeopleMeetAWS/backups/
 ```
 
 - The service is called `peoplemeet` (not `bun-service`), the database is `/home/ubuntu/db/peoplemeet.db`.
