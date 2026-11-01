@@ -14,7 +14,7 @@ const getPlayer = (): AudioPlayer | null => {
     player.volume = 1.0;
   } catch (error) {
     audioUnavailable = true;
-    console.error('🔇 Message sound unavailable:', error);
+    console.warn('🔇 Message sound unavailable (rebuild the app to include expo-audio):', error);
   }
   return player;
 };
