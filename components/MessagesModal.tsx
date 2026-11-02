@@ -1147,6 +1147,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderTopRightRadius: 4,
     padding: 12,
+    paddingBottom: 7,
     // Stronger shadow than received bubbles: on the dark green a soft one is hard to see
     shadowOpacity: 0.25,
     shadowRadius: 4,
@@ -1159,6 +1160,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderTopLeftRadius: 4,
     padding: 12,
+    paddingBottom: 7,
   },
   chatMessageText: {
     fontSize: 16,
@@ -1204,7 +1206,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    marginTop: 4,
+    marginTop: 6,
   },
   chatMessageMetaSent: {
     justifyContent: 'flex-end',
