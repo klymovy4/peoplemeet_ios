@@ -71,7 +71,22 @@ export const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2
   const angularDistance = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   const d = EARTH_RADIUS * angularDistance;
 
-  return d > 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`;
+  return formatApproximateDistance(d);
+};
+
+/**
+ * Other users' positions are shifted by up to 150 m for privacy, so an exact number would be
+ * misleading (and two people would see different ones). Show ranges / rounded values instead.
+ */
+export const formatApproximateDistance = (meters: number): string => {
+  if (meters < 200) return '< 200 m';
+  if (meters < 500) return '< 500 m';
+  if (meters < 1000) return '< 1 km';
+  if (meters < 10000) {
+    const km = Math.round((meters / 1000) * 2) / 2; // 0.5 km steps
+    return `~${km % 1 === 0 ? km.toFixed(0) : km.toFixed(1)} km`;
+  }
+  return `~${Math.round(meters / 1000)} km`;
 };
 
 /**
