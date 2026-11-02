@@ -8,7 +8,7 @@ import { stopMessagesInterval } from './messagesInterval';
 import { disableUsersOnlinePolling } from './usersOnlineInterval';
 
 // Where banned users can appeal
-export const SUPPORT_EMAIL = 'klymovy4roman@gmail.com';
+export const SUPPORT_EMAIL = 'support@peoplemeet.com.ua';
 
 /** Explains the ban and offers to appeal by email (used after logout and on the login screen) */
 export const showBannedAlert = () => {
