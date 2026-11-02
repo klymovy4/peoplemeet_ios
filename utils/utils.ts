@@ -31,7 +31,7 @@ export const getUserMarkerColor = (user: any): string => {
   const id = Number(user?.id ?? user?.user_id);
   if (!Number.isFinite(id)) return 'hsl(160, 45%, 45%)';
   const hue = Math.round((id * 137.508) % 360);
-  return `hsl(${hue}, 65%, 60%)`; // softer than full saturation: purples and blues are not too harsh
+  return `hsl(${hue}, 60%, 65%)`; // softer than full saturation: purples and blues are not too harsh
 };
 
 /**
