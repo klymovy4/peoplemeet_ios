@@ -86,8 +86,9 @@ export const getMessages = (token: string) => request('/get_messages', { token }
 export const readMessages = (token: string, chat_partner_id: number) =>
   request('/read_messages', { token, chat_partner_id });
 
-export const sendMessage = (token: string, receiver_id: number, message_text: string) =>
-  request('/send_message', { token, receiver_id, message_text });
+// reply_to_id: the message this one replies to (shown as a quote)
+export const sendMessage = (token: string, receiver_id: number, message_text: string, reply_to_id?: number) =>
+  request('/send_message', { token, receiver_id, message_text, ...(reply_to_id ? { reply_to_id } : {}) });
 
 // ❤️ on a message you received (double tap), or removes it
 export const likeMessage = (token: string, message_id: number, liked: boolean) =>

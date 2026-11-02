@@ -8,6 +8,7 @@ import { deleteMessage, likeMessage, removeConversation } from '@/services/api';
 import * as Haptics from 'expo-haptics';
 import { replaceEmoticons } from '@/utils/utils';
 import { useUserModeration } from '@/hooks/use-user-moderation';
+import SwipeToReply from '@/components/SwipeToReply';
 
 interface MessagesModalProps {
   visible: boolean;
@@ -27,7 +28,8 @@ interface MessagesModalProps {
   onSetShowUserInfo: (show: boolean) => void;
   onSetSelectedChatUser: (user: any | null) => void;
   onSetMessageText: (text: string) => void;
-  onSendMessage: () => void;
+  // Gets the id of the message being replied to; resolves to true when the message was sent
+  onSendMessage: (replyToId?: number) => Promise<boolean> | void;
   onRemoveConversation?: () => void;
   // Called after the user is blocked or reported, so the screen can hide them right away
   onUserBlocked?: (userId: number) => void;
@@ -214,15 +216,65 @@ export default function MessagesModal({
     patchMessage(message.id, { message_text: '', is_deleted: 1, is_liked: 0 });
   };
 
-  // Long press: your own message can be deleted for everyone, a received one can be reported
+  // --- Replies: swipe a message right (or "Reply" in the long-press menu) ---
+  const [replyTo, setReplyTo] = useState<any | null>(null);
+  const chatInputRef = useRef<TextInput>(null);
+  // Vertical position of every message in the chat, to scroll to a quoted message
+  const messagePositionsRef = useRef<Record<number, number>>({});
+  const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
+
+  // A reply belongs to one conversation: drop it when the chat changes
+  useEffect(() => {
+    setReplyTo(null);
+    messagePositionsRef.current = {};
+  }, [selectedChatUser?.id]);
+
+  const startReply = (message: any) => {
+    if (!message?.id || message.is_deleted) return;
+    setReplyTo(message);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    chatInputRef.current?.focus();
+  };
+
+  const handleSend = async () => {
+    const sent = await onSendMessage(replyTo?.id);
+    if (sent) setReplyTo(null);
+  };
+
+  // Name shown above a quote
+  const quoteAuthor = (senderId: number) =>
+    senderId === userData?.id ? 'You' : (getActualUser() || selectedChatUser)?.name || 'User';
+
+  const replyPreviewText = (text: string) => (text.length > 80 ? `${text.slice(0, 80)}…` : text);
+
+  // Tap on a quote: scroll to the original message and highlight it for a moment
+  const goToQuotedMessage = (messageId: number) => {
+    const y = messagePositionsRef.current[messageId];
+    if (y === undefined) return;
+    scrollViewRef.current?.scrollTo({ y: Math.max(0, y - 40), animated: true });
+    setHighlightedMessageId(messageId);
+    setTimeout(() => setHighlightedMessageId((id) => (id === messageId ? null : id)), 1200);
+  };
+
+  // Long press: Reply, plus Delete for everyone (own message) or Report (received message)
   const handleMessageLongPress = (message: any, isFromCurrentUser: boolean) => {
     if (!message?.id) return;
+    const replyAction = message.is_deleted ? [] : [{ text: 'Reply', onPress: () => startReply(message) }];
 
     if (isFromCurrentUser) {
       if (message.is_deleted) return;
-      Alert.alert('Delete for everyone?', 'The message will be replaced with "Message deleted" for both of you.', [
+      Alert.alert('Message', undefined, [
+        ...replyAction,
+        {
+          text: 'Delete for everyone',
+          style: 'destructive',
+          onPress: () =>
+            Alert.alert('Delete for everyone?', 'The message will be replaced with "Message deleted" for both of you.', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Delete', style: 'destructive', onPress: () => deleteForEveryone(message) },
+            ]),
+        },
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => deleteForEveryone(message) },
       ]);
       return;
     }
@@ -230,9 +282,10 @@ export default function MessagesModal({
     // Deleted messages can still be reported: moderators see the original text
     const user = getActualUser() || selectedChatUser;
     if (!user?.id) return;
-    Alert.alert('Report this message?', message.is_deleted ? 'Deleted message' : message.message_text || '', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert('Message', message.is_deleted ? 'Deleted message' : undefined, [
+      ...replyAction,
       { text: 'Report', style: 'destructive', onPress: () => reportMessage({ id: user.id, name: user.name }, message.id) },
+      { text: 'Cancel', style: 'cancel' },
     ]);
   };
 
@@ -657,16 +710,47 @@ export default function MessagesModal({
                         ) : (
                           chatMessages.map((message: any, index: number) => {
                             const isFromCurrentUser = message.sender_id === userData?.id;
+                            const quote = message.reply_to;
                             return (
-                              <Pressable
+                              <View
                                 key={message.id || index}
+                                onLayout={(e) => {
+                                  if (message.id) messagePositionsRef.current[message.id] = e.nativeEvent.layout.y;
+                                }}
+                              >
+                              <SwipeToReply enabled={!message.is_deleted} onReply={() => startReply(message)}>
+                              <Pressable
                                 style={[
                                   styles.chatMessage,
-                                  isFromCurrentUser ? styles.chatMessageSent : styles.chatMessageReceived
+                                  isFromCurrentUser ? styles.chatMessageSent : styles.chatMessageReceived,
+                                  highlightedMessageId === message.id ? styles.chatMessageHighlighted : null,
                                 ]}
                                 onPress={() => handleMessagePress(message, isFromCurrentUser)}
                                 onLongPress={() => handleMessageLongPress(message, isFromCurrentUser)}
                               >
+                                {quote ? (
+                                  <Pressable
+                                    style={[styles.chatQuote, isFromCurrentUser ? styles.chatQuoteSent : styles.chatQuoteReceived]}
+                                    onPress={() => goToQuotedMessage(quote.id)}
+                                    disabled={!!quote.unavailable}
+                                  >
+                                    {!quote.unavailable ? (
+                                      <Text style={[styles.chatQuoteAuthor, isFromCurrentUser && styles.chatQuoteTextSent]}>
+                                        {quoteAuthor(quote.sender_id)}
+                                      </Text>
+                                    ) : null}
+                                    <Text
+                                      style={[styles.chatQuoteText, isFromCurrentUser && styles.chatQuoteTextSent]}
+                                      numberOfLines={2}
+                                    >
+                                      {quote.unavailable
+                                        ? 'Message no longer available'
+                                        : quote.is_deleted
+                                          ? '🚫 Message deleted'
+                                          : quote.text}
+                                    </Text>
+                                  </Pressable>
+                                ) : null}
                                 <Text style={[
                                   styles.chatMessageText,
                                   isFromCurrentUser ? styles.chatMessageTextSent : styles.chatMessageTextReceived,
@@ -691,13 +775,30 @@ export default function MessagesModal({
                                   </View>
                                 ) : null}
                               </Pressable>
+                              </SwipeToReply>
+                              </View>
                             );
                           })
                         );
                       })()}
                     </ScrollView>
+                    {replyTo ? (
+                      <View style={styles.replyBar}>
+                        <View style={styles.replyBarAccent} />
+                        <View style={styles.replyBarContent}>
+                          <Text style={styles.replyBarTitle}>Replying to {quoteAuthor(replyTo.sender_id)}</Text>
+                          <Text style={styles.replyBarText} numberOfLines={1}>
+                            {replyPreviewText(replyTo.message_text || '')}
+                          </Text>
+                        </View>
+                        <Pressable onPress={() => setReplyTo(null)} hitSlop={10} accessibilityLabel="Cancel reply">
+                          <Ionicons name="close" size={20} color="#999" />
+                        </Pressable>
+                      </View>
+                    ) : null}
                     <View style={styles.chatInputContainer}>
                       <TextInput
+                        ref={chatInputRef}
                         style={styles.chatInput}
                         value={messageText}
                         maxLength={1000}
@@ -714,7 +815,7 @@ export default function MessagesModal({
                           !messageText.trim() && styles.chatSendButtonDisabled,
                           (pressed || sendingMessage) && styles.chatSendButtonPressed,
                         ]}
-                        onPress={onSendMessage}
+                        onPress={handleSend}
                         // Always visible, but inactive until some text is typed
                         disabled={!messageText.trim() || sendingMessage}
                         hitSlop={8}
@@ -1054,6 +1155,66 @@ const styles = StyleSheet.create({
   chatMessageTimeReceived: {
     color: '#666',
     textAlign: 'left',
+  },
+  chatMessageHighlighted: {
+    opacity: 0.6,
+  },
+  // Quote of the replied message, inside the bubble
+  chatQuote: {
+    borderLeftWidth: 3,
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    marginBottom: 6,
+  },
+  chatQuoteSent: {
+    borderLeftColor: '#fff',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  chatQuoteReceived: {
+    borderLeftColor: '#4ECDC4',
+    backgroundColor: 'rgba(0, 0, 0, 0.06)',
+  },
+  chatQuoteAuthor: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2aa79d',
+  },
+  chatQuoteText: {
+    fontSize: 13,
+    color: '#555',
+  },
+  chatQuoteTextSent: {
+    color: '#fff',
+  },
+  // "Replying to …" bar above the input
+  replyBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    backgroundColor: '#f7f7f7',
+  },
+  replyBarAccent: {
+    width: 3,
+    alignSelf: 'stretch',
+    borderRadius: 2,
+    backgroundColor: '#4ECDC4',
+  },
+  replyBarContent: {
+    flex: 1,
+  },
+  replyBarTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2aa79d',
+  },
+  replyBarText: {
+    fontSize: 13,
+    color: '#666',
   },
   chatInputContainer: {
     flexDirection: 'row',

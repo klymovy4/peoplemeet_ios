@@ -831,30 +831,35 @@ export default function ProfileScreen() {
   };
 
   // Sends a message
-  const handleSendMessage = async () => {
+  // Returns true when the message was sent (the chat then clears its "replying to" bar)
+  const handleSendMessage = async (replyToId?: number): Promise<boolean> => {
     if (!messageText.trim() || !selectedChatUser || sendingMessage) {
-      return;
+      return false;
     }
 
     try {
       setSendingMessage(true);
       const token = await getToken();
       if (!token || !selectedChatUser.id) {
-        return;
+        return false;
       }
 
-      const result = await sendMessage(token, selectedChatUser.id, replaceEmoticons(messageText, true).trim());
+      const result = await sendMessage(token, selectedChatUser.id, replaceEmoticons(messageText, true).trim(), replyToId);
       if (result.status === 'success') {
         setMessageText('');
         // Scroll down after sending
         setTimeout(() => {
           scrollViewRef.current?.scrollToEnd({ animated: true });
         }, 100);
-      } else if (result.data?.error === 'blocked') {
+        return true;
+      }
+      if (result.data?.error === 'blocked') {
         Toast.show({ type: 'error', text1: "Can't send", text2: "You can't message this user" });
       }
+      return false;
     } catch (error) {
       console.error('Error sending message:', error);
+      return false;
     } finally {
       setSendingMessage(false);
     }
