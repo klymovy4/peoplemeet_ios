@@ -1,4 +1,4 @@
-import { signUpUser } from '@/services/api';
+import { resultErrorMessage, signUpUser } from '@/services/api';
 import { saveToken } from '@/services/auth';
 import { startMessagesInterval } from '@/services/messagesInterval';
 import { useTheme } from '@react-navigation/native';
@@ -84,7 +84,7 @@ export default function SignUpScreen() {
         text2:
           response.status === 'success'
             ? 'No session token received'
-            : response.data?.message || 'Could not register',
+            : resultErrorMessage(response, 'Could not register'),
       });
       setLoading(false);
       return;

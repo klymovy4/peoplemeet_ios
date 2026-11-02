@@ -1,4 +1,4 @@
-import { loginUser } from '@/services/api';
+import { loginUser, resultErrorMessage } from '@/services/api';
 import { saveToken, saveUserData } from '@/services/auth';
 import { startMessagesInterval } from '@/services/messagesInterval';
 import { showBannedAlert } from '@/services/session';
@@ -75,7 +75,7 @@ export default function LoginScreen() {
          Toast.show({
             type: 'error',
             text1: 'Login failed',
-            text2: result.data?.message || 'Invalid email or password',
+            text2: resultErrorMessage(result, 'Invalid email or password'),
          });
       }
 

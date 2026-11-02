@@ -855,6 +855,9 @@ export default function ProfileScreen() {
       }
       if (result.data?.error === 'blocked') {
         Toast.show({ type: 'error', text1: "Can't send", text2: "You can't message this user" });
+      } else if ('offline' in result && result.offline) {
+        // The text stays in the input, so it can be sent again
+        Toast.show({ type: 'error', text1: 'Message not sent', text2: 'Check your internet connection' });
       }
       return false;
     } catch (error) {

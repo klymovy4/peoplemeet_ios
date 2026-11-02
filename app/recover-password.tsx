@@ -1,4 +1,4 @@
-import { changePassword, checkRecoveryCode, getRecoverCode } from '@/services/api';
+import { changePassword, checkRecoveryCode, getRecoverCode, resultErrorMessage } from '@/services/api';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -52,7 +52,7 @@ export default function RecoverPasswordScreen() {
         Toast.show({
           type: 'error',
           text1: 'Error',
-          text2: response.data?.message || 'Invalid code',
+          text2: resultErrorMessage(response, 'Invalid code'),
         });
         setFormCode('');
         setIsStartChangePassword(false);
@@ -89,7 +89,7 @@ export default function RecoverPasswordScreen() {
       Toast.show({
         type: 'error',
         text1: 'Error',
-        text2: response.data?.message || 'Failed to send code',
+        text2: resultErrorMessage(response, 'Failed to send code'),
       });
     }
 
@@ -136,7 +136,7 @@ export default function RecoverPasswordScreen() {
       Toast.show({
         type: 'error',
         text1: 'Error',
-        text2: response.data?.message || 'Failed to change password',
+        text2: resultErrorMessage(response, 'Failed to change password'),
       });
     }
 

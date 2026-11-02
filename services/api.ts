@@ -1,10 +1,29 @@
+import { reportNetworkFailure, reportNetworkSuccess } from './connection';
+
 // API base URL. Set via the EXPO_PUBLIC_API_URL environment variable
 // (see .env.example); falls back to the production URL when unset.
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://peoplemeet.com.ua';
 
+
 export type ApiResult =
   | { status: 'success'; data: any }
-  | { status: 'failed'; data?: any; error?: unknown };
+  // offline: the request never reached the server (no internet), so `data` is empty
+  | { status: 'failed'; data?: any; error?: unknown; offline?: boolean };
+
+/** fetch that also tells services/connection whether the server could be reached */
+async function trackedFetch(url: string, init: RequestInit): Promise<Response> {
+  try {
+    const response = await fetch(url, init);
+    reportNetworkSuccess();
+    return response;
+  } catch (error) {
+    reportNetworkFailure();
+    throw error;
+  }
+}
+
+// fetch rejects with a TypeError ("Network request failed") when there is no connection
+const isNetworkError = (error: unknown) => error instanceof TypeError;
 
 // Handler for an expired/invalid session (401). Registered at app startup
 // (see services/session.ts) so the network layer does not depend on the router.
@@ -25,7 +44,7 @@ const bodyHasToken = (body: unknown): boolean =>
  * On 401 for an authenticated request, triggers the logout handler.
  */
 async function apiPost(path: string, body: unknown): Promise<{ ok: boolean; data: any }> {
-  const response = await fetch(`${BASE_URL}${path}`, {
+  const response = await trackedFetch(`${BASE_URL}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -46,6 +65,12 @@ async function apiPost(path: string, body: unknown): Promise<{ ok: boolean; data
   return { ok: response.ok, data };
 }
 
+/** Error text for a failed request: "no internet" instead of a misleading server message */
+export const resultErrorMessage = (result: ApiResult, fallback: string): string =>
+  result.status === 'failed' && result.offline
+    ? 'No internet connection. Please try again.'
+    : result.data?.message || fallback;
+
 /**
  * Wrapper around apiPost with a uniform { status, data } result
  * and centralized network error handling.
@@ -55,6 +80,11 @@ async function request(path: string, body: unknown): Promise<ApiResult> {
     const { ok, data } = await apiPost(path, body);
     return ok ? { status: 'success', data } : { status: 'failed', data };
   } catch (error) {
+    if (isNetworkError(error)) {
+      // Expected while offline: the banner tells the user, keep the log quiet
+      console.warn('API offline:', path);
+      return { status: 'failed', error, offline: true };
+    }
     console.error('API error:', path, error);
     return { status: 'failed', error };
   }
@@ -156,7 +186,7 @@ export const uploadAvatar = async (
   formData.append('token', token);
 
   try {
-    const response = await fetch(`${BASE_URL}/upload`, {
+    const response = await trackedFetch(`${BASE_URL}/upload`, {
       method: 'POST',
       body: formData,
     });
@@ -181,7 +211,11 @@ export const getUsersOnline = async (token: string): Promise<any | null> => {
     }
     return data;
   } catch (err) {
-    console.error('Error fetching online users:', err);
+    if (isNetworkError(err)) {
+      console.warn('API offline: /online_users');
+    } else {
+      console.error('Error fetching online users:', err);
+    }
     return null;
   }
 };

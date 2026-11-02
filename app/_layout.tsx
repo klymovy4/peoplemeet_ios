@@ -8,6 +8,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Toast from 'react-native-toast-message';
 import { registerSessionHandler } from '@/services/session';
 import AnimatedSplash from '@/components/AnimatedSplash';
+import OfflineBanner from '@/components/OfflineBanner';
 
 // Keep the native splash until AnimatedSplash takes over from it
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -33,6 +34,7 @@ export default function RootLayout() {
         </Stack>
         {/* Light backgrounds everywhere (splash included): dark status bar icons */}
         <StatusBar style="dark" />
+        <OfflineBanner />
         <Toast />
         {splashVisible && <AnimatedSplash onFinish={() => setSplashVisible(false)} />}
       </ThemeProvider>
