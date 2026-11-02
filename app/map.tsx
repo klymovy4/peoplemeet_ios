@@ -987,7 +987,8 @@ export default function MapScreen() {
                       }}
                       onPress={() => handleMarkerPress(currentUserData)}
                       imageUri={getImageUrl(currentUserData?.image)}
-                      avatarStyle={mapStyles.markerAvatar}
+                      // Your own color too: others see you with the same ring
+                      avatarStyle={[mapStyles.markerAvatar, { borderColor: getUserMarkerColor(currentUserData) }]}
                       avatarSize={SELF_AVATAR_SIZE}
                       thoughts={currentUserData?.thoughts}
                   />

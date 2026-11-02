@@ -25,30 +25,13 @@ export const parseCoordinate = (coord: string | number | null | undefined): numb
  * Generates a unique marker color for a user based on their data
  */
 export const getUserMarkerColor = (user: any): string => {
-  // Collect data for generating the color
-  const name = user?.name || '';
-  const age = user?.age || 0;
-  const sex = user?.sex || '';
-  
-  // Build a string from all the data
-  const dataString = `${name}-${age}-${sex}`;
-  
-  // Simple hash function to turn the string into a number
-  let hash = 0;
-  for (let i = 0; i < dataString.length; i++) {
-    const char = dataString.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  
-  // Use the hash to generate RGB components
-  // Use different ranges for brighter, more saturated colors
-  const r = Math.abs(hash) % 156 + 100; // 100-255 (bright reds)
-  const g = Math.abs(hash * 7) % 156 + 100; // 100-255 (bright greens)
-  const b = Math.abs(hash * 13) % 156 + 100; // 100-255 (bright blues)
-  
-  // Return the color in hex format
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  // Each user keeps one color forever: it depends only on the id (the old version used name,
+  // age and gender, so editing the profile changed the color). Consecutive ids are spread around
+  // the color wheel by the golden angle (~137.5 degrees), so neighbors get clearly different hues
+  const id = Number(user?.id ?? user?.user_id);
+  if (!Number.isFinite(id)) return 'hsl(160, 45%, 45%)';
+  const hue = Math.round((id * 137.508) % 360);
+  return `hsl(${hue}, 75%, 50%)`;
 };
 
 /**
