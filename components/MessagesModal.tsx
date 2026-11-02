@@ -4,7 +4,8 @@ import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-na
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
-import { deleteMessage, removeConversation } from '@/services/api';
+import { deleteMessage, likeMessage, removeConversation } from '@/services/api';
+import * as Haptics from 'expo-haptics';
 import { replaceEmoticons } from '@/utils/utils';
 import { useUserModeration } from '@/hooks/use-user-moderation';
 
@@ -162,6 +163,45 @@ export default function MessagesModal({
     onUserBlocked?.(userId);
   });
 
+  // Updates one message in the local data right away (the next poll confirms it)
+  const patchMessage = (messageId: number, patch: Record<string, unknown>) => {
+    setMessagesData((data: any) => {
+      const messages = { ...(data?.messages || {}) };
+      for (const partnerId of Object.keys(messages)) {
+        messages[partnerId] = messages[partnerId].map((m: any) => (m.id === messageId ? { ...m, ...patch } : m));
+      }
+      return { ...data, messages };
+    });
+  };
+
+  // Double tap on a received message toggles ❤️
+  const DOUBLE_TAP_MS = 300;
+  const lastTapRef = useRef<{ id: number; time: number } | null>(null);
+
+  const toggleLike = async (message: any) => {
+    const liked = !message.is_liked;
+    patchMessage(message.id, { is_liked: liked ? 1 : 0 });
+    if (liked) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+
+    const token = await getToken();
+    const result = token ? await likeMessage(token, message.id, liked) : null;
+    if (result?.status !== 'success') {
+      patchMessage(message.id, { is_liked: liked ? 0 : 1 });
+    }
+  };
+
+  const handleMessagePress = (message: any, isFromCurrentUser: boolean) => {
+    if (isFromCurrentUser || message.is_deleted || !message.id) return;
+    const now = Date.now();
+    const last = lastTapRef.current;
+    if (last && last.id === message.id && now - last.time < DOUBLE_TAP_MS) {
+      lastTapRef.current = null;
+      toggleLike(message);
+    } else {
+      lastTapRef.current = { id: message.id, time: now };
+    }
+  };
+
   const deleteForEveryone = async (message: any) => {
     const token = await getToken();
     if (!token) return;
@@ -171,15 +211,7 @@ export default function MessagesModal({
       return;
     }
     // Show the placeholder right away instead of waiting for the next poll
-    setMessagesData((data: any) => {
-      const messages = { ...(data?.messages || {}) };
-      for (const partnerId of Object.keys(messages)) {
-        messages[partnerId] = messages[partnerId].map((m: any) =>
-          m.id === message.id ? { ...m, message_text: '', is_deleted: 1 } : m
-        );
-      }
-      return { ...data, messages };
-    });
+    patchMessage(message.id, { message_text: '', is_deleted: 1, is_liked: 0 });
   };
 
   // Long press: your own message can be deleted for everyone, a received one can be reported
@@ -632,6 +664,7 @@ export default function MessagesModal({
                                   styles.chatMessage,
                                   isFromCurrentUser ? styles.chatMessageSent : styles.chatMessageReceived
                                 ]}
+                                onPress={() => handleMessagePress(message, isFromCurrentUser)}
                                 onLongPress={() => handleMessageLongPress(message, isFromCurrentUser)}
                               >
                                 <Text style={[
@@ -647,6 +680,16 @@ export default function MessagesModal({
                                 ]}>
                                   {formatMessageTime(message.created_at)}
                                 </Text>
+                                {message.is_liked ? (
+                                  <View
+                                    style={[
+                                      styles.chatMessageLike,
+                                      isFromCurrentUser ? styles.chatMessageLikeSent : styles.chatMessageLikeReceived,
+                                    ]}
+                                  >
+                                    <Text style={styles.chatMessageLikeText}>❤️</Text>
+                                  </View>
+                                ) : null}
                               </Pressable>
                             );
                           })
@@ -969,6 +1012,31 @@ const styles = StyleSheet.create({
   },
   chatMessageTextReceived: {
     color: '#333',
+  },
+  // ❤️ badge on the bottom corner of a liked message
+  chatMessageLike: {
+    position: 'absolute',
+    bottom: -10,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  chatMessageLikeSent: {
+    left: -8,
+  },
+  chatMessageLikeReceived: {
+    right: -8,
+  },
+  chatMessageLikeText: {
+    fontSize: 12,
   },
   chatMessageTextDeleted: {
     fontStyle: 'italic',
