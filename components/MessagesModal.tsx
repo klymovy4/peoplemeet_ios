@@ -1134,6 +1134,12 @@ const styles = StyleSheet.create({
   chatMessage: {
     marginBottom: 12,
     maxWidth: '80%',
+    // Soft shadow so bubbles stand out from the mint background
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 2.5,
+    elevation: 2,
   },
   chatMessageSent: {
     alignSelf: 'flex-end',
