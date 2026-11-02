@@ -160,7 +160,8 @@ export const reportUser = (
   token: string,
   user_id: number,
   reason: ReportReason,
-  options: { message_id?: number; comment?: string } = {},
+  // block: also block the reported user (the server's default is true)
+  options: { message_id?: number; comment?: string; block?: boolean } = {},
 ) => request('/report_user', { token, user_id, reason, ...options });
 
 /**

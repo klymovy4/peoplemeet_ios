@@ -60,7 +60,7 @@ export function useUserModeration(onUserRemoved?: (userId: number) => void) {
     setReportTarget({ userId: user.id, name: displayName(user), messageId });
   };
 
-  const submitReport = async (reason: ReportReason, comment: string) => {
+  const submitReport = async (reason: ReportReason, comment: string, alsoBlock: boolean) => {
     if (!reportTarget) return;
     const token = await getToken();
     if (!token) return;
@@ -68,12 +68,17 @@ export function useUserModeration(onUserRemoved?: (userId: number) => void) {
     const result = await reportUser(token, reportTarget.userId, reason, {
       message_id: reportTarget.messageId,
       comment: comment || undefined,
+      block: alsoBlock,
     });
     if (result.status === 'success') {
-      Toast.show({ type: 'success', text1: 'Report sent', text2: 'Thank you. The user has been blocked' });
       const { userId } = reportTarget;
       setReportTarget(null);
-      onUserRemoved?.(userId);
+      if (alsoBlock) {
+        Toast.show({ type: 'success', text1: 'Report sent', text2: 'Thank you. The user has been blocked' });
+        onUserRemoved?.(userId);
+      } else {
+        Toast.show({ type: 'success', text1: 'Report sent', text2: 'Thank you, our team will review it' });
+      }
     } else {
       Toast.show({ type: 'error', text1: 'Error', text2: result.data?.message || 'Failed to send the report' });
     }

@@ -22,13 +22,15 @@ type Props = {
   // Reporting a specific chat message rather than the whole profile
   isMessage?: boolean;
   onClose: () => void;
-  onSubmit: (reason: ReportReason, comment: string) => Promise<void>;
+  onSubmit: (reason: ReportReason, comment: string, alsoBlock: boolean) => Promise<void>;
 };
 
 export default function ReportModal({ visible, userName, isMessage, onClose, onSubmit }: Props) {
   const [reason, setReason] = useState<ReportReason | null>(null);
   const [comment, setComment] = useState('');
   const [sending, setSending] = useState(false);
+  // Blocking is on by default (safer), but a report doesn't have to block
+  const [alsoBlock, setAlsoBlock] = useState(true);
 
   // Start clean every time the modal opens
   useEffect(() => {
@@ -36,6 +38,7 @@ export default function ReportModal({ visible, userName, isMessage, onClose, onS
       setReason(null);
       setComment('');
       setSending(false);
+      setAlsoBlock(true);
     }
   }, [visible]);
 
@@ -43,7 +46,7 @@ export default function ReportModal({ visible, userName, isMessage, onClose, onS
     if (!reason || sending) return;
     setSending(true);
     try {
-      await onSubmit(reason, comment.trim());
+      await onSubmit(reason, comment.trim(), alsoBlock);
     } finally {
       setSending(false);
     }
@@ -59,7 +62,7 @@ export default function ReportModal({ visible, userName, isMessage, onClose, onS
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
             <Text style={styles.title}>{isMessage ? 'Report message' : `Report ${userName}`}</Text>
             <Text style={styles.subtitle}>
-              {`${userName} will be blocked and our team will review the report. They won't know who reported them.`}
+              {"Our team will review the report. They won't know who reported them."}
             </Text>
 
             {REPORT_REASONS.map((option) => {
@@ -87,6 +90,21 @@ export default function ReportModal({ visible, userName, isMessage, onClose, onS
               multiline
               maxLength={MAX_COMMENT_LENGTH}
             />
+
+            <Pressable
+              style={styles.blockRow}
+              onPress={() => setAlsoBlock((value) => !value)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: alsoBlock }}
+            >
+              <Ionicons name={alsoBlock ? 'checkbox' : 'square-outline'} size={22} color={alsoBlock ? '#FF6B6B' : '#999'} />
+              <View style={styles.blockTextContainer}>
+                <Text style={styles.blockTitle}>Also block {userName}</Text>
+                <Text style={styles.blockHint}>
+                  {"You won't see each other on the map and can't message each other"}
+                </Text>
+              </View>
+            </Pressable>
 
             <View style={styles.buttons}>
               <Pressable style={[styles.button, styles.cancelButton]} onPress={onClose} disabled={sending}>
@@ -168,6 +186,25 @@ const styles = StyleSheet.create({
     color: '#333',
     textAlignVertical: 'top',
     marginTop: 4,
+  },
+  blockRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginTop: 14,
+  },
+  blockTextContainer: {
+    flex: 1,
+  },
+  blockTitle: {
+    fontSize: 15,
+    color: '#333',
+    fontWeight: '600',
+  },
+  blockHint: {
+    fontSize: 13,
+    color: '#888',
+    marginTop: 2,
   },
   buttons: {
     flexDirection: 'row',
