@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { deleteMessage, likeMessage, removeConversation } from '@/services/api';
 import * as Haptics from 'expo-haptics';
-import { replaceEmoticons } from '@/utils/utils';
+import { formatLastSeen, replaceEmoticons } from '@/utils/utils';
 import { useUserModeration } from '@/hooks/use-user-moderation';
 import SwipeToReply from '@/components/SwipeToReply';
 
@@ -510,12 +510,25 @@ export default function MessagesModal({
                         );
                       })()}
                     </Pressable>
-                    <Text style={styles.messagesTitle}>
-                      {(() => {
-                        const actualUser = getActualUser();
-                        return actualUser?.name || 'User';
-                      })()}
-                    </Text>
+                    {(() => {
+                      const actualUser = getActualUser();
+                      const isOnline = actualUser?.is_online === 1 ||
+                        onlineUsers.some((u: any) => String(u.id || u.user_id) === String(actualUser?.id));
+                      const lastSeen = isOnline ? null : formatLastSeen(actualUser?.last_time_online);
+                      return (
+                        <View style={styles.messagesTitleContainer}>
+                          <Text style={styles.messagesTitleName} numberOfLines={1}>
+                            {actualUser?.name || 'User'}
+                          </Text>
+                          {/* Online, or when the person was last active */}
+                          {isOnline ? (
+                            <Text style={[styles.messagesStatus, styles.messagesStatusOnline]}>online</Text>
+                          ) : lastSeen ? (
+                            <Text style={styles.messagesStatus}>{lastSeen}</Text>
+                          ) : null}
+                        </View>
+                      );
+                    })()}
                   </>
                 ) : (
                   <Text style={styles.messagesTitle}>{title}</Text>
@@ -1003,6 +1016,25 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#333',
     flex: 1,
+  },
+  // Chat header: name with "online" / "last seen …" under it
+  messagesTitleContainer: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  messagesTitleName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  messagesStatus: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 1,
+  },
+  messagesStatusOnline: {
+    color: '#2aa79d',
+    fontWeight: '600',
   },
   messagesCloseButton: {
     fontSize: 24,

@@ -161,3 +161,23 @@ export const replaceEmoticons = (text: string, final = false): string => {
   if (final) return text.replace(ALL_EMOTICONS_RE, toEmoji);
   return text.replace(SAFE_EMOTICONS_RE, toEmoji).replace(LETTER_EMOTICONS_RE, toEmoji);
 };
+
+/**
+ * "last seen 5m ago" for a server timestamp (UTC, "YYYY-MM-DD HH:MM:SS")
+ */
+export const formatLastSeen = (lastTimeOnline: string | null | undefined): string | null => {
+  if (!lastTimeOnline) return null;
+  const date = new Date(lastTimeOnline.includes('T') ? lastTimeOnline : lastTimeOnline.replace(' ', 'T') + 'Z');
+  if (isNaN(date.getTime())) return null;
+
+  const minutes = Math.floor((Date.now() - date.getTime()) / 60000);
+  if (minutes < 1) return 'last seen just now';
+  if (minutes < 60) return `last seen ${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `last seen ${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `last seen ${days}d ago`;
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  return `last seen ${day}.${month}`;
+};
