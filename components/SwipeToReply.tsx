@@ -10,6 +10,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
+import { chatColors } from '@/theme/colors';
 
 // How far the message follows the finger, and from where releasing it starts a reply
 const MAX_DRAG = 80;
@@ -55,7 +56,7 @@ export default function SwipeToReply({ enabled, onReply, children }: Props) {
     <GestureDetector gesture={pan}>
       <Animated.View>
         <Animated.View style={[styles.icon, iconStyle]} pointerEvents="none">
-          <Ionicons name="arrow-undo" size={20} color="#4ECDC4" />
+          <Ionicons name="arrow-undo" size={20} color={chatColors.accent} />
         </Animated.View>
         <Animated.View style={rowStyle}>{children}</Animated.View>
       </Animated.View>

@@ -9,6 +9,7 @@ import * as Haptics from 'expo-haptics';
 import { formatLastSeen, replaceEmoticons } from '@/utils/utils';
 import { useUserModeration } from '@/hooks/use-user-moderation';
 import SwipeToReply from '@/components/SwipeToReply';
+import { chatColors } from '@/theme/colors';
 
 interface MessagesModalProps {
   visible: boolean;
@@ -495,7 +496,7 @@ export default function MessagesModal({
                             source={{ uri: getImageUrl(actualUser.image) || '' }}
                             style={[
                               styles.messagesHeaderAvatar,
-                              { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
+                              { borderColor: isOnline ? chatColors.online : chatColors.offline }
                             ]}
                             contentFit="cover"
                           />
@@ -503,7 +504,7 @@ export default function MessagesModal({
                           <View style={[
                             styles.messagesHeaderAvatar,
                             styles.messagesHeaderAvatarPlaceholder,
-                            { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
+                            { borderColor: isOnline ? chatColors.online : chatColors.offline }
                           ]}>
                             <View style={styles.messagesHeaderAvatarInner} />
                           </View>
@@ -559,7 +560,7 @@ export default function MessagesModal({
                                 source={{ uri: getImageUrl(actualUser.image) || '' }}
                                 style={[
                                   styles.userInfoImage,
-                                  { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
+                                  { borderColor: isOnline ? chatColors.online : chatColors.offline }
                                 ]}
                                 contentFit="cover"
                               />
@@ -567,7 +568,7 @@ export default function MessagesModal({
                               <View style={[
                                 styles.userInfoImage,
                                 styles.userInfoImagePlaceholder,
-                                { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
+                                { borderColor: isOnline ? chatColors.online : chatColors.offline }
                               ]}>
                                 <View style={styles.userInfoImageInner} />
                               </View>
@@ -674,7 +675,7 @@ export default function MessagesModal({
                                   style={[styles.userInfoModerationButton, styles.userInfoReportButton]}
                                   onPress={() => openReport({ id: actualUser.id, name: actualUser.name })}
                                 >
-                                  <Ionicons name="flag-outline" size={18} color="#FF6B6B" />
+                                  <Ionicons name="flag-outline" size={18} color={chatColors.danger} />
                                   <Text style={styles.userInfoReportButtonText}>Report</Text>
                                 </Pressable>
                                 <Pressable
@@ -783,7 +784,7 @@ export default function MessagesModal({
                                     <Ionicons
                                       name={message.is_read || message.is_delivered ? 'checkmark-done' : 'checkmark'}
                                       size={15}
-                                      color={message.is_read ? '#0B4F6C' : 'rgba(255, 255, 255, 0.8)'}
+                                      color={message.is_read ? chatColors.readTick : chatColors.sentMeta}
                                       accessibilityLabel={message.is_read ? 'Read' : message.is_delivered ? 'Delivered' : 'Sent'}
                                     />
                                   ) : null}
@@ -898,7 +899,7 @@ export default function MessagesModal({
                                   source={{ uri: getImageUrl(user.image) || '' }}
                                   style={[
                                     styles.messageUserAvatar,
-                                    { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
+                                    { borderColor: isOnline ? chatColors.online : chatColors.offline }
                                   ]}
                                   contentFit="cover"
                                 />
@@ -906,7 +907,7 @@ export default function MessagesModal({
                                 <View style={[
                                   styles.messageUserAvatar,
                                   styles.messageUserAvatarPlaceholder,
-                                  { borderColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
+                                  { borderColor: isOnline ? chatColors.online : chatColors.offline }
                                 ]}>
                                   <View style={styles.messageUserAvatarInner} />
                                 </View>
@@ -914,7 +915,7 @@ export default function MessagesModal({
                               {getUnreadCountForUser(userId) > 0 && (
                                 <View style={[
                                   styles.messageUserBadge,
-                                  { backgroundColor: isOnline ? '#4ECDC4' : '#FF6B6B' }
+                                  { backgroundColor: isOnline ? chatColors.online : chatColors.offline }
                                 ]}>
                                   <Text style={styles.messageUserBadgeText}>
                                     {getUnreadCountForUser(userId) > 99 ? '99+' : getUnreadCountForUser(userId)}
@@ -1033,7 +1034,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   messagesStatusOnline: {
-    color: '#2aa79d',
+    color: chatColors.online,
     fontWeight: '600',
   },
   messagesCloseButton: {
@@ -1045,6 +1046,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'column',
     minHeight: 0,
+    backgroundColor: chatColors.background,
   },
   messagesUsersContainer: {
     flex: 1,
@@ -1135,14 +1137,14 @@ const styles = StyleSheet.create({
   },
   chatMessageSent: {
     alignSelf: 'flex-end',
-    backgroundColor: '#4ECDC4',
+    backgroundColor: chatColors.sent,
     borderRadius: 16,
     borderTopRightRadius: 4,
     padding: 12,
   },
   chatMessageReceived: {
     alignSelf: 'flex-start',
-    backgroundColor: '#e0e0e0',
+    backgroundColor: chatColors.received,
     borderRadius: 16,
     borderTopLeftRadius: 4,
     padding: 12,
@@ -1152,10 +1154,10 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   chatMessageTextSent: {
-    color: '#fff',
+    color: chatColors.sentText,
   },
   chatMessageTextReceived: {
-    color: '#333',
+    color: chatColors.receivedText,
   },
   // ❤️ badge on the bottom corner of a liked message
   chatMessageLike: {
@@ -1201,11 +1203,11 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   chatMessageTimeSent: {
-    color: '#fff',
+    color: chatColors.sentText,
     textAlign: 'right',
   },
   chatMessageTimeReceived: {
-    color: '#666',
+    color: chatColors.receivedMeta,
     textAlign: 'left',
   },
   chatMessageHighlighted: {
@@ -1221,16 +1223,16 @@ const styles = StyleSheet.create({
   },
   chatQuoteSent: {
     borderLeftColor: '#fff',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: chatColors.quoteSentBackground,
   },
   chatQuoteReceived: {
-    borderLeftColor: '#4ECDC4',
-    backgroundColor: 'rgba(0, 0, 0, 0.06)',
+    borderLeftColor: chatColors.accent,
+    backgroundColor: chatColors.quoteReceivedBackground,
   },
   chatQuoteAuthor: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#2aa79d',
+    color: chatColors.accent,
   },
   chatQuoteText: {
     fontSize: 13,
@@ -1247,14 +1249,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    backgroundColor: '#f7f7f7',
+    borderTopColor: chatColors.border,
+    backgroundColor: '#fff',
   },
   replyBarAccent: {
     width: 3,
     alignSelf: 'stretch',
     borderRadius: 2,
-    backgroundColor: '#4ECDC4',
+    backgroundColor: chatColors.accent,
   },
   replyBarContent: {
     flex: 1,
@@ -1262,7 +1264,7 @@ const styles = StyleSheet.create({
   replyBarTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#2aa79d',
+    color: chatColors.accent,
   },
   replyBarText: {
     fontSize: 13,
@@ -1274,13 +1276,13 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     padding: 12,
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    borderTopColor: chatColors.border,
     backgroundColor: '#fff',
   },
   chatInput: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: chatColors.border,
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -1292,7 +1294,7 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     marginLeft: 8,
-    backgroundColor: '#4ECDC4',
+    backgroundColor: chatColors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1395,7 +1397,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   userInfoDeleteButton: {
-    backgroundColor: '#FF6B6B',
+    backgroundColor: chatColors.danger,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
@@ -1427,10 +1429,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   userInfoReportButton: {
-    borderColor: '#FF6B6B',
+    borderColor: chatColors.danger,
   },
   userInfoReportButtonText: {
-    color: '#FF6B6B',
+    color: chatColors.danger,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -1443,7 +1445,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   userInfoShowOnMapButton: {
-    backgroundColor: '#4ECDC4',
+    backgroundColor: chatColors.accent,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
