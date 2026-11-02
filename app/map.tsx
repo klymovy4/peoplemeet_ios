@@ -105,9 +105,11 @@ function AvatarMarker({ coordinate, identifier, onPress, imageUri, avatarStyle, 
       {thoughtsLayout ? (
         <View style={{ width: thoughtsLayout.width, height: thoughtsLayout.height }}>
           <View style={{ position: 'absolute', left: thoughtsLayout.avatarLeft, top: thoughtsLayout.avatarTop }}>{avatar}</View>
-          <View style={[mapStyles.markerThoughtsContainer, { left: thoughtsLayout.bubbleLeft }]}>
+          {/* The bubble area ends right at the avatar's top edge, so a short bubble sits just above it */}
+          <View style={[mapStyles.markerThoughtsContainer, { left: thoughtsLayout.bubbleLeft, height: THOUGHTS_TOP }]}>
             <Text style={mapStyles.markerThoughts} numberOfLines={2}>
-              {thoughts}
+              {/* Older thoughts may contain line breaks: show them on one line */}
+              {thoughts?.replace(/\s*\n+\s*/g, ' ')}
             </Text>
           </View>
         </View>

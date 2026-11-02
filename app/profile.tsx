@@ -1093,21 +1093,15 @@ export default function ProfileScreen() {
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Thoughts:</Text>
                   <TextInput
-                    style={[styles.input, styles.textArea]}
+                    style={styles.input}
                     value={thoughts}
                     onChangeText={(text) => {
-                      // Limit to 21 characters
-                      if (text.length <= 21) {
-                        setThoughts(text);
-                      } else {
-                        setThoughts(text.substring(0, 21));
-                      }
+                      // One line only (a pasted line break would make the map bubble taller), max 21 characters
+                      setThoughts(text.replace(/\s*\n+\s*/g, ' ').substring(0, 21));
                     }}
                     placeholder="Share your thoughts (up to 21 characters)"
                     placeholderTextColor="#999"
-                    multiline
-                    numberOfLines={4}
-                    textAlignVertical="top"
+                    returnKeyType="done"
                     maxLength={21}
                   />
                   {thoughts !== null && thoughts !== undefined && (

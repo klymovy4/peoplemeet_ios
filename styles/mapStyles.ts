@@ -124,6 +124,8 @@ export const mapStyles = StyleSheet.create({
     top: 0,
     width: 150,
     alignItems: 'flex-start',
+    // Bubble at the bottom of its area (next to the avatar), not floating at the top
+    justifyContent: 'flex-end',
     zIndex: 10,
   },
   // The bubble itself shrinks to fit the text
