@@ -758,12 +758,23 @@ export default function MessagesModal({
                                 ]}>
                                   {message.is_deleted ? '🚫 Message deleted' : message.message_text || ''}
                                 </Text>
-                                <Text style={[
-                                  styles.chatMessageTime,
-                                  isFromCurrentUser ? styles.chatMessageTimeSent : styles.chatMessageTimeReceived
-                                ]}>
-                                  {formatMessageTime(message.created_at)}
-                                </Text>
+                                <View style={[styles.chatMessageMeta, isFromCurrentUser && styles.chatMessageMetaSent]}>
+                                  <Text style={[
+                                    styles.chatMessageTime,
+                                    isFromCurrentUser ? styles.chatMessageTimeSent : styles.chatMessageTimeReceived
+                                  ]}>
+                                    {formatMessageTime(message.created_at)}
+                                  </Text>
+                                  {/* Your messages: ✓ sent, ✓✓ delivered, ✓✓ (dark) read */}
+                                  {isFromCurrentUser && !message.is_deleted ? (
+                                    <Ionicons
+                                      name={message.is_read || message.is_delivered ? 'checkmark-done' : 'checkmark'}
+                                      size={15}
+                                      color={message.is_read ? '#0B4F6C' : 'rgba(255, 255, 255, 0.8)'}
+                                      accessibilityLabel={message.is_read ? 'Read' : message.is_delivered ? 'Delivered' : 'Sent'}
+                                    />
+                                  ) : null}
+                                </View>
                                 {message.is_liked ? (
                                   <View
                                     style={[
@@ -1143,9 +1154,18 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     opacity: 0.75,
   },
+  // Time and delivery ticks under the message text
+  chatMessageMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 4,
+  },
+  chatMessageMetaSent: {
+    justifyContent: 'flex-end',
+  },
   chatMessageTime: {
     fontSize: 11,
-    marginTop: 4,
     opacity: 0.7,
   },
   chatMessageTimeSent: {
